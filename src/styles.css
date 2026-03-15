@@ -318,14 +318,6 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
-.engine-layout {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
-  margin-top: 1rem;
-  align-items: start;
-}
-
 .engine-card {
   border: 1px solid var(--line);
   border-radius: 20px;
@@ -416,10 +408,43 @@ button {
 
 .usage-panel {
   margin-top: 1rem;
+}
+
+.collapsible-block {
+  margin-top: 1rem;
   border: 1px solid var(--line);
   border-radius: 22px;
   background: rgba(255, 252, 246, 0.76);
-  padding: 1rem;
+}
+
+.collapsible-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 1rem 1.1rem;
+  font-weight: 700;
+}
+
+.collapsible-summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-summary::after {
+  content: "+";
+  color: var(--accent-strong);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.collapsible-block[open] .collapsible-summary::after {
+  content: "-";
+}
+
+.collapsible-content {
+  padding: 0 1.1rem 1rem;
 }
 
 .usage-head,
@@ -564,13 +589,6 @@ button {
   font-size: 1.2rem;
 }
 
-.guide-block--inline {
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: rgba(255, 252, 246, 0.76);
-  padding: 1rem;
-}
-
 .guide-notes {
   display: grid;
   gap: 0.55rem;
@@ -710,7 +728,6 @@ button {
     grid-column: 1 / -1;
   }
 
-  .engine-layout,
   .preview-layout {
     grid-template-columns: 1fr;
   }

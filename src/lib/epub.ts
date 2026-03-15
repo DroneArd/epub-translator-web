@@ -45,7 +45,10 @@ const PREVIEW_STYLE = `
 
   .parallel-layout {
     display: grid;
+    width: 95%;
+    margin: 0 auto;
     gap: 1.25rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   .parallel-panel {
@@ -62,12 +65,6 @@ const PREVIEW_STYLE = `
   .parallel-panel h3:first-child,
   .parallel-panel p:first-child {
     margin-top: 0;
-  }
-
-  @media (min-width: 960px) {
-    .parallel-layout {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
   }
 `;
 

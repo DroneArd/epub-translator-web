@@ -1255,62 +1255,65 @@ function App() {
                 );
               })}
             </div>
-            <div className="engine-layout">
-              <div className="engine-detail">
-                <p>{ENGINE_CATALOG[selectedEngine].description}</p>
-                <div className="field-grid">
-                  {ENGINE_CATALOG[selectedEngine].fields.map((field) => (
-                    <label key={field.key} className="field">
-                      <span>{field.label}</span>
-                      <input
-                        type={field.type}
-                        placeholder={field.placeholder}
-                        required={field.required}
-                        value={providerConfig[selectedEngine][field.key] ?? ""}
-                        onChange={(event) =>
-                          updateProviderConfig(
-                            selectedEngine,
-                            field.key,
-                            event.target.value,
-                          )
-                        }
-                      />
-                      {field.help ? <small>{field.help}</small> : null}
-                    </label>
-                  ))}
+            <div className="engine-detail">
+              <p>{ENGINE_CATALOG[selectedEngine].description}</p>
+              <details className="collapsible-block">
+                <summary className="collapsible-summary">
+                  <span>Setup help for {ENGINE_CATALOG[selectedEngine].label}</span>
+                </summary>
+                <div className="collapsible-content">
+                  <div className="guide-block">
+                    <ol className="guide-steps">
+                      {ENGINE_CATALOG[selectedEngine].setupSteps.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ol>
+                    <div className="guide-notes">
+                      {ENGINE_CATALOG[selectedEngine].notes.map((note) => (
+                        <p key={note}>{note}</p>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <div className="toggle-stack">
-                  <label className="toggle-row">
+              </details>
+              <div className="field-grid">
+                {ENGINE_CATALOG[selectedEngine].fields.map((field) => (
+                  <label key={field.key} className="field">
+                    <span>{field.label}</span>
                     <input
-                      type="checkbox"
-                      checked={persistencePreferences.rememberApiKeys}
+                      type={field.type}
+                      placeholder={field.placeholder}
+                      required={field.required}
+                      value={providerConfig[selectedEngine][field.key] ?? ""}
                       onChange={(event) =>
-                        updatePersistencePreference("rememberApiKeys", event.target.checked)
+                        updateProviderConfig(
+                          selectedEngine,
+                          field.key,
+                          event.target.value,
+                        )
                       }
-                      disabled={!persistencePreferences.rememberSession}
                     />
-                    <span>
-                      <strong>Remember my API key on this device</strong>
-                      <small>
-                        Keep this turned off if you are on a shared computer. The key is only saved inside this browser.
-                      </small>
-                    </span>
+                    {field.help ? <small>{field.help}</small> : null}
                   </label>
-                </div>
+                ))}
               </div>
-              <div className="guide-block guide-block--inline">
-                <p className="card-label">Setup Help</p>
-                <h3>How to get your {ENGINE_CATALOG[selectedEngine].label} key</h3>
-                <ol className="guide-steps">
-                  {ENGINE_CATALOG[selectedEngine].setupSteps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-                <div className="guide-notes">
-                  {ENGINE_CATALOG[selectedEngine].notes.map((note) => (
-                    <p key={note}>{note}</p>
-                  ))}
-                </div>
+              <div className="toggle-stack">
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={persistencePreferences.rememberApiKeys}
+                    onChange={(event) =>
+                      updatePersistencePreference("rememberApiKeys", event.target.checked)
+                    }
+                    disabled={!persistencePreferences.rememberSession}
+                  />
+                  <span>
+                    <strong>Remember my API key on this device</strong>
+                    <small>
+                      Keep this turned off if you are on a shared computer. The key is only saved inside this browser.
+                    </small>
+                  </span>
+                </label>
               </div>
             </div>
           </article>
@@ -1371,123 +1374,120 @@ function App() {
               </label>
             </div>
 
-            <div className="usage-panel">
-              <div className="usage-head">
-                <strong>Estimated usage before you start</strong>
-                <span>
-                  {selectedEngine === "openai"
-                    ? "Approximate estimate"
-                    : "Usually accurate estimate"}
-                </span>
-              </div>
-              {book ? (
-                <>
-                  <div className="usage-grid">
-                    <article className="usage-stat">
-                      <span>Book text size</span>
-                      <strong>{formatCount(sourceCharacterCount)} characters</strong>
-                    </article>
-                    {selectedEngine === "openai" ? (
-                      <>
-                        <article className="usage-stat">
-                          <span>Approx. input tokens</span>
-                          <strong>{formatCount(estimatedInputTokens)}</strong>
-                        </article>
-                        <article className="usage-stat">
-                          <span>Approx. output tokens</span>
-                          <strong>{formatCount(estimatedOutputTokens)}</strong>
-                        </article>
-                      </>
-                    ) : (
+            <details className="collapsible-block usage-panel">
+              <summary className="collapsible-summary">
+                <span>Estimated usage before you start</span>
+              </summary>
+              <div className="collapsible-content">
+                {book ? (
+                  <>
+                    <div className="usage-grid">
                       <article className="usage-stat">
-                        <span>Estimated billed characters</span>
-                        <strong>{formatCount(estimatedBilledCharacters)}</strong>
+                        <span>Book text size</span>
+                        <strong>{formatCount(sourceCharacterCount)} characters</strong>
                       </article>
-                    )}
-                    <article className="usage-stat">
-                      <span>How this service charges</span>
-                      <strong>{selectedEngine === "openai" ? "Tokens" : "Characters"}</strong>
-                    </article>
-                  </div>
+                      {selectedEngine === "openai" ? (
+                        <>
+                          <article className="usage-stat">
+                            <span>Approx. input tokens</span>
+                            <strong>{formatCount(estimatedInputTokens)}</strong>
+                          </article>
+                          <article className="usage-stat">
+                            <span>Approx. output tokens</span>
+                            <strong>{formatCount(estimatedOutputTokens)}</strong>
+                          </article>
+                        </>
+                      ) : (
+                        <article className="usage-stat">
+                          <span>Estimated billed characters</span>
+                          <strong>{formatCount(estimatedBilledCharacters)}</strong>
+                        </article>
+                      )}
+                      <article className="usage-stat">
+                        <span>How this service charges</span>
+                        <strong>{selectedEngine === "openai" ? "Tokens" : "Characters"}</strong>
+                      </article>
+                    </div>
 
-                  <div className="field-grid field-grid--compact price-grid">
-                    {selectedEngine === "openai" ? (
-                      <>
+                    <div className="field-grid field-grid--compact price-grid">
+                      {selectedEngine === "openai" ? (
+                        <>
+                          <label className="field">
+                            <span>Input price per 1M tokens</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Optional"
+                              value={pricingConfig.openai.inputPerMillionTokens}
+                              onChange={(event) =>
+                                updatePricingConfig(
+                                  "openai",
+                                  "inputPerMillionTokens",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                            <small>Use your own currency. Example: 0.15 or 2.50.</small>
+                          </label>
+                          <label className="field">
+                            <span>Output price per 1M tokens</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Optional"
+                              value={pricingConfig.openai.outputPerMillionTokens}
+                              onChange={(event) =>
+                                updatePricingConfig(
+                                  "openai",
+                                  "outputPerMillionTokens",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                            <small>The estimate uses the same currency you enter above.</small>
+                          </label>
+                        </>
+                      ) : (
                         <label className="field">
-                          <span>Input price per 1M tokens</span>
+                          <span>Price per 1M characters</span>
                           <input
                             type="text"
                             inputMode="decimal"
                             placeholder="Optional"
-                            value={pricingConfig.openai.inputPerMillionTokens}
+                            value={pricingConfig[selectedEngine].perMillionCharacters}
                             onChange={(event) =>
                               updatePricingConfig(
-                                "openai",
-                                "inputPerMillionTokens",
+                                selectedEngine,
+                                "perMillionCharacters",
                                 event.target.value,
                               )
                             }
                           />
-                          <small>Use your own currency. Example: 0.15 or 2.50.</small>
+                          <small>Use the price from your account. The estimate uses the same currency.</small>
                         </label>
-                        <label className="field">
-                          <span>Output price per 1M tokens</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="Optional"
-                            value={pricingConfig.openai.outputPerMillionTokens}
-                            onChange={(event) =>
-                              updatePricingConfig(
-                                "openai",
-                                "outputPerMillionTokens",
-                                event.target.value,
-                              )
-                            }
-                          />
-                          <small>The estimate uses the same currency you enter above.</small>
-                        </label>
-                      </>
-                    ) : (
-                      <label className="field">
-                        <span>Price per 1M characters</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="Optional"
-                          value={pricingConfig[selectedEngine].perMillionCharacters}
-                          onChange={(event) =>
-                            updatePricingConfig(
-                              selectedEngine,
-                              "perMillionCharacters",
-                              event.target.value,
-                            )
-                          }
-                        />
-                        <small>Use the price from your account. The estimate uses the same currency.</small>
-                      </label>
-                    )}
-                  </div>
+                      )}
+                    </div>
 
-                  <p className="usage-summary">
-                    {estimatedCost !== null
-                      ? `Estimated cost for the whole book: ${formatMoney(estimatedCost)}`
-                      : selectedEngine === "openai"
-                        ? "Add your input and output token prices above if you want a money estimate."
-                        : "Add your character price above if you want a money estimate."}
+                    <p className="usage-summary">
+                      {estimatedCost !== null
+                        ? `Estimated cost for the whole book: ${formatMoney(estimatedCost)}`
+                        : selectedEngine === "openai"
+                          ? "Add your input and output token prices above if you want a money estimate."
+                          : "Add your character price above if you want a money estimate."}
+                    </p>
+                    <p className="usage-note">
+                      {selectedEngine === "openai"
+                        ? "OpenAI estimates are based on about 4 characters per token, so the final numbers can be a bit lower or higher."
+                        : "Character-based services are easier to predict because they usually bill from the source text length."}
+                    </p>
+                  </>
+                ) : (
+                  <p className="empty-copy">
+                    Choose a book first and the usage estimate will appear here.
                   </p>
-                  <p className="usage-note">
-                    {selectedEngine === "openai"
-                      ? "OpenAI estimates are based on about 4 characters per token, so the final numbers can be a bit lower or higher."
-                      : "Character-based services are easier to predict because they usually bill from the source text length."}
-                  </p>
-                </>
-              ) : (
-                <p className="empty-copy">
-                  Choose a book first and the usage estimate will appear here.
-                </p>
-              )}
-            </div>
+                )}
+              </div>
+            </details>
 
             <div className="mode-toggle">
               <button
