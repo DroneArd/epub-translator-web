@@ -46,6 +46,8 @@ export interface TranslatableDocument {
   order: number;
 }
 
+export type CompletedSegmentsByPath = Record<string, boolean[]>;
+
 export interface SectionSummary {
   path: string;
   title: string;

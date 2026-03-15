@@ -465,8 +465,8 @@ function serializeDocument(
   return `${prefix}${serialized}`;
 }
 
-export async function loadEpub(file: File) {
-  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+async function loadEpubArchive(input: ArrayBuffer, fileName: string) {
+  const zip = await JSZip.loadAsync(input);
   const fileOrder: string[] = [];
 
   zip.forEach((path) => {
@@ -576,11 +576,11 @@ export async function loadEpub(file: File) {
   sections.sort((left, right) => left.order - right.order);
   const packageTitle =
     firstElementByLocalName(opfDoc, "title")?.textContent?.trim() ||
-    basenameWithoutExtension(file.name) ||
+    basenameWithoutExtension(fileName) ||
     "Untitled EPUB";
 
   return {
-    fileName: file.name,
+    fileName,
     title: packageTitle,
     rootFilePath,
     opfDir,
@@ -590,6 +590,17 @@ export async function loadEpub(file: File) {
     documents,
     sections,
   } satisfies EpubBook;
+}
+
+export async function loadEpub(file: File) {
+  return loadEpubArchive(await file.arrayBuffer(), file.name);
+}
+
+export async function loadEpubFromArrayBuffer(
+  input: ArrayBuffer,
+  fileName: string,
+) {
+  return loadEpubArchive(input, fileName);
 }
 
 export function buildPreviewDocument(

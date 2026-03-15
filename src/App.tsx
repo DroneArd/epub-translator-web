@@ -3,15 +3,28 @@ import {
   buildDownloadBlob,
   buildPreviewDocument,
   createDownloadName,
-  loadEpub,
+  loadEpubFromArrayBuffer,
 } from "./lib/epub";
 import {
   DEFAULT_PROVIDER_CONFIG,
   ENGINE_CATALOG,
   ENGINE_ORDER,
 } from "./lib/engineCatalog";
+import {
+  clearPersistedSession,
+  loadPersistedSession,
+  loadPersistencePreferences,
+  savePersistedSession,
+  savePersistencePreferences,
+} from "./lib/clientPersistence";
+import type {
+  PersistencePreferences,
+  PersistedTranslationSession,
+  PricingConfigRecord,
+} from "./lib/clientPersistence";
 import { isEngineRunnable, translateBatch } from "./lib/providers";
 import type {
+  CompletedSegmentsByPath,
   EngineId,
   EpubBook,
   ProviderConfigRecord,
@@ -48,19 +61,6 @@ const INITIAL_USAGE_TOTALS: TranslationUsageTotals = {
   successfulBatches: 0,
 };
 
-type PricingConfigRecord = {
-  openai: {
-    inputPerMillionTokens: string;
-    outputPerMillionTokens: string;
-  };
-  google: {
-    perMillionCharacters: string;
-  };
-  deepl: {
-    perMillionCharacters: string;
-  };
-};
-
 const INITIAL_PRICING: PricingConfigRecord = {
   openai: {
     inputPerMillionTokens: "",
@@ -80,6 +80,30 @@ function cloneDefaultPricing(): PricingConfigRecord {
 
 function cloneDefaultConfig(): ProviderConfigRecord {
   return JSON.parse(JSON.stringify(DEFAULT_PROVIDER_CONFIG)) as ProviderConfigRecord;
+}
+
+function sanitizeProviderConfigForPersistence(
+  providerConfig: ProviderConfigRecord,
+  rememberApiKeys: boolean,
+) {
+  if (rememberApiKeys) {
+    return JSON.parse(JSON.stringify(providerConfig)) as ProviderConfigRecord;
+  }
+
+  return {
+    openai: {
+      ...providerConfig.openai,
+      apiKey: "",
+    },
+    google: {
+      ...providerConfig.google,
+      apiKey: "",
+    },
+    deepl: {
+      ...providerConfig.deepl,
+      apiKey: "",
+    },
+  } satisfies ProviderConfigRecord;
 }
 
 function sumSegments(book: EpubBook | null) {
@@ -117,6 +141,65 @@ function buildBaselineTranslations(book: EpubBook) {
   }
 
   return baseline;
+}
+
+function buildCompletionMap(book: EpubBook) {
+  const completion: CompletedSegmentsByPath = {};
+
+  for (const documentRecord of Object.values(book.documents)) {
+    completion[documentRecord.path] = new Array(documentRecord.sourceTexts.length).fill(false);
+  }
+
+  return completion;
+}
+
+function countCompletedSegments(completedByPath: CompletedSegmentsByPath) {
+  return Object.values(completedByPath).reduce(
+    (total, flags) => total + flags.filter(Boolean).length,
+    0,
+  );
+}
+
+function cloneTranslations(translatedByPath: Record<string, string[]>) {
+  return Object.fromEntries(
+    Object.entries(translatedByPath).map(([path, texts]) => [path, [...texts]]),
+  ) as Record<string, string[]>;
+}
+
+function cloneCompletionMap(completedByPath: CompletedSegmentsByPath) {
+  return Object.fromEntries(
+    Object.entries(completedByPath).map(([path, flags]) => [path, [...flags]]),
+  ) as CompletedSegmentsByPath;
+}
+
+function mergeSavedTranslations(
+  book: EpubBook,
+  translatedByPath: Record<string, string[]> | undefined,
+  completedByPath: CompletedSegmentsByPath | undefined,
+) {
+  const mergedTranslations = buildBaselineTranslations(book);
+  const mergedCompletion = buildCompletionMap(book);
+
+  for (const documentRecord of Object.values(book.documents)) {
+    const savedTexts = translatedByPath?.[documentRecord.path];
+    const savedFlags = completedByPath?.[documentRecord.path];
+
+    for (let index = 0; index < documentRecord.sourceTexts.length; index += 1) {
+      if (typeof savedTexts?.[index] === "string") {
+        mergedTranslations[documentRecord.path][index] = savedTexts[index];
+      }
+
+      mergedCompletion[documentRecord.path][index] =
+        typeof savedFlags?.[index] === "boolean"
+          ? savedFlags[index]
+          : mergedTranslations[documentRecord.path][index] !== documentRecord.sourceTexts[index];
+    }
+  }
+
+  return {
+    translatedByPath: mergedTranslations,
+    completedByPath: mergedCompletion,
+  };
 }
 
 function formatErrorMessage(error: unknown) {
@@ -205,6 +288,7 @@ function createIssue(
 
 function App() {
   const [book, setBook] = useState<EpubBook | null>(null);
+  const [bookBinary, setBookBinary] = useState<ArrayBuffer | null>(null);
   const [selectedEngine, setSelectedEngine] = useState<EngineId>("google");
   const [providerConfig, setProviderConfig] = useState<ProviderConfigRecord>(
     cloneDefaultConfig,
@@ -214,6 +298,7 @@ function App() {
   );
   const [settings, setSettings] = useState<TranslationSettings>(INITIAL_SETTINGS);
   const [translatedByPath, setTranslatedByPath] = useState<Record<string, string[]>>({});
+  const [completedByPath, setCompletedByPath] = useState<CompletedSegmentsByPath>({});
   const [issues, setIssues] = useState<TranslationIssue[]>([]);
   const [progress, setProgress] = useState<TranslationProgress>(INITIAL_PROGRESS);
   const [usageTotals, setUsageTotals] = useState<TranslationUsageTotals>(
@@ -226,7 +311,11 @@ function App() {
   const [previewPath, setPreviewPath] = useState("");
   const [previewHtml, setPreviewHtml] = useState("");
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [persistencePreferences, setPersistencePreferences] =
+    useState<PersistencePreferences>(loadPersistencePreferences);
+  const [restoringSession, setRestoringSession] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const persistenceReadyRef = useRef(false);
 
   const currentDocument = book && previewPath ? book.documents[previewPath] : undefined;
   const currentSectionIndex = book
@@ -276,6 +365,169 @@ function App() {
   }, []);
 
   useEffect(() => {
+    savePersistencePreferences(persistencePreferences);
+  }, [persistencePreferences]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function restoreSession() {
+      try {
+        if (!persistencePreferences.rememberSession) {
+          await clearPersistedSession().catch(() => undefined);
+          return;
+        }
+
+        const savedSession = await loadPersistedSession();
+        if (cancelled || !savedSession) {
+          return;
+        }
+
+        setSelectedEngine(savedSession.selectedEngine);
+        setPricingConfig(savedSession.pricingConfig);
+        setSettings(savedSession.settings);
+        setIssues(savedSession.issues);
+        setUsageTotals(savedSession.usageTotals);
+        setSourceCharacterCount(savedSession.sourceCharacterCount);
+        setPreviewPath(savedSession.previewPath);
+
+        const restoredConfig = persistencePreferences.rememberApiKeys
+          ? savedSession.providerConfig
+          : sanitizeProviderConfigForPersistence(savedSession.providerConfig, false);
+        setProviderConfig(restoredConfig);
+
+        if (savedSession.bookData && savedSession.bookFileName) {
+          const restoredBook = await loadEpubFromArrayBuffer(
+            savedSession.bookData,
+            savedSession.bookFileName,
+          );
+
+          if (cancelled) {
+            return;
+          }
+
+          const mergedState = mergeSavedTranslations(
+            restoredBook,
+            savedSession.translatedByPath,
+            savedSession.completedByPath,
+          );
+          const translatedSegments = countCompletedSegments(mergedState.completedByPath);
+          const totalSegments = sumSegments(restoredBook);
+          const hadActiveWork =
+            savedSession.progress.status === "loading" ||
+            savedSession.progress.status === "translating";
+
+          setBook(restoredBook);
+          setBookBinary(savedSession.bookData);
+          setTranslatedByPath(mergedState.translatedByPath);
+          setCompletedByPath(mergedState.completedByPath);
+          setProgress({
+            status:
+              translatedSegments && translatedSegments >= totalSegments ? "done" : "ready",
+            totalSegments,
+            translatedSegments,
+            totalBatches: savedSession.progress.totalBatches,
+            completedBatches: savedSession.progress.completedBatches,
+            activeBatches: 0,
+          });
+          setStatusMessage(
+            hadActiveWork
+              ? "Your saved book and partial translation were restored. Translation was paused by the reload, so press Start translation to continue."
+              : "Your saved book and settings were restored on this device.",
+          );
+          return;
+        }
+
+        setStatusMessage(savedSession.statusMessage || "Your saved settings were restored.");
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setIssues([
+          createIssue(
+            selectedEngine,
+            "Saved data",
+            formatErrorMessage(error),
+            true,
+          ),
+        ]);
+        setStatusMessage("We could not restore the saved session on this device.");
+        await clearPersistedSession().catch(() => undefined);
+      } finally {
+        if (!cancelled) {
+          persistenceReadyRef.current = true;
+          setRestoringSession(false);
+        }
+      }
+    }
+
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [persistencePreferences.rememberSession]);
+
+  useEffect(() => {
+    if (!persistenceReadyRef.current || restoringSession) {
+      return;
+    }
+
+    if (!persistencePreferences.rememberSession) {
+      void clearPersistedSession();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const session: PersistedTranslationSession = {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        bookFileName: book?.fileName ?? null,
+        bookData: bookBinary,
+        selectedEngine,
+        providerConfig: sanitizeProviderConfigForPersistence(
+          providerConfig,
+          persistencePreferences.rememberApiKeys,
+        ),
+        pricingConfig,
+        settings,
+        translatedByPath,
+        completedByPath,
+        issues,
+        progress,
+        usageTotals,
+        sourceCharacterCount,
+        statusMessage,
+        previewPath,
+      };
+
+      void savePersistedSession(session).catch(() => undefined);
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    book,
+    bookBinary,
+    completedByPath,
+    issues,
+    previewPath,
+    pricingConfig,
+    progress,
+    providerConfig,
+    restoringSession,
+    selectedEngine,
+    settings,
+    sourceCharacterCount,
+    statusMessage,
+    translatedByPath,
+    usageTotals,
+    persistencePreferences,
+  ]);
+
+  useEffect(() => {
     if (!book) {
       setPreviewHtml("");
       return;
@@ -319,16 +571,22 @@ function App() {
     setStatusMessage("Opening your book on this device...");
     setIssues([]);
     setBook(null);
+    setBookBinary(null);
     setPreviewPath("");
     setPreviewHtml("");
+    setCompletedByPath({});
 
     try {
-      const loadedBook = await loadEpub(file);
+      const bookData = await file.arrayBuffer();
+      const loadedBook = await loadEpubFromArrayBuffer(bookData, file.name);
       const baselineTranslations = buildBaselineTranslations(loadedBook);
+      const baselineCompletion = buildCompletionMap(loadedBook);
       const segmentCount = sumSegments(loadedBook);
       const characterCount = countBookCharacters(loadedBook);
       setBook(loadedBook);
+      setBookBinary(bookData);
       setTranslatedByPath(baselineTranslations);
+      setCompletedByPath(baselineCompletion);
       setSourceCharacterCount(characterCount);
       setProgress({
         ...INITIAL_PROGRESS,
@@ -380,6 +638,17 @@ function App() {
         ...current[engine],
         [field]: value,
       },
+    }));
+  }
+
+  function updatePersistencePreference<Key extends keyof PersistencePreferences>(
+    key: Key,
+    value: PersistencePreferences[Key],
+  ) {
+    setPersistencePreferences((current) => ({
+      ...current,
+      ...(key === "rememberSession" && !value ? { rememberApiKeys: false } : {}),
+      [key]: value,
     }));
   }
 
@@ -468,38 +737,50 @@ function App() {
       (left, right) => left.order - right.order,
     );
     const tasks = orderedDocuments.flatMap((documentRecord) => {
+      const pendingIndices = documentRecord.sourceTexts
+        .map((_, index) => index)
+        .filter((index) => !completedByPath[documentRecord.path]?.[index]);
       const batches = [];
+
       for (
-        let segmentStart = 0;
-        segmentStart < documentRecord.sourceTexts.length;
-        segmentStart += settings.batchSize
+        let batchStart = 0;
+        batchStart < pendingIndices.length;
+        batchStart += settings.batchSize
       ) {
+        const segmentIndices = pendingIndices.slice(
+          batchStart,
+          batchStart + settings.batchSize,
+        );
         batches.push({
           docPath: documentRecord.path,
           title: documentRecord.title,
-          segmentStart,
-          texts: documentRecord.sourceTexts.slice(
-            segmentStart,
-            segmentStart + settings.batchSize,
-          ),
+          segmentStart: segmentIndices[0] ?? 0,
+          segmentIndices,
+          texts: segmentIndices.map((index) => documentRecord.sourceTexts[index]),
         });
       }
       return batches;
     });
 
     if (!tasks.length) {
-      setIssues([
-        createIssue(
-          selectedEngine,
-          "Translation",
-          "We could not find any readable text to translate in this EPUB.",
-          false,
-        ),
-      ]);
+      setIssues([]);
+      setStatusMessage(
+        "Everything in this book is already translated in the current session. You can keep reading or download the EPUB now.",
+      );
+      setProgress((current) => ({
+        ...current,
+        status: "done",
+        translatedSegments: totalSegments,
+      }));
       return;
     }
 
-    const workingTranslations = buildBaselineTranslations(book);
+    const workingTranslations = cloneTranslations(
+      Object.keys(translatedByPath).length ? translatedByPath : buildBaselineTranslations(book),
+    );
+    const workingCompletion = cloneCompletionMap(
+      Object.keys(completedByPath).length ? completedByPath : buildCompletionMap(book),
+    );
     const collectedIssues: TranslationIssue[] = [];
     const workerCount = Math.max(1, Math.min(settings.concurrency, tasks.length));
     const sourceLanguage = settings.sourceLanguage.trim();
@@ -507,11 +788,14 @@ function App() {
     let nextTaskIndex = 0;
     let completedBatches = 0;
     let activeBatches = 0;
-    let translatedSegments = 0;
-    const workingUsage: TranslationUsageTotals = {
-      ...INITIAL_USAGE_TOTALS,
-      engine: selectedEngine,
-    };
+    let translatedSegments = countCompletedSegments(workingCompletion);
+    const workingUsage: TranslationUsageTotals =
+      usageTotals.engine === selectedEngine
+        ? { ...usageTotals }
+        : {
+            ...INITIAL_USAGE_TOTALS,
+            engine: selectedEngine,
+          };
 
     const syncProgress = (status: TranslationProgress["status"]) => {
       setProgress({
@@ -525,12 +809,13 @@ function App() {
     };
 
     setTranslatedByPath(workingTranslations);
+    setCompletedByPath(workingCompletion);
     setIssues([]);
     setStatusMessage("Translation has started. The preview will update as each part finishes.");
     setProgress({
       status: "translating",
       totalSegments,
-      translatedSegments: 0,
+      translatedSegments,
       totalBatches: tasks.length,
       completedBatches: 0,
       activeBatches: 0,
@@ -564,12 +849,18 @@ function App() {
             );
           }
 
-          workingTranslations[task.docPath].splice(
-            task.segmentStart,
-            translatedTexts.length,
-            ...translatedTexts,
-          );
-          translatedSegments += translatedTexts.length;
+          translatedTexts.forEach((text, index) => {
+            const segmentIndex = task.segmentIndices[index];
+            if (typeof segmentIndex !== "number") {
+              return;
+            }
+
+            workingTranslations[task.docPath][segmentIndex] = text;
+            if (!workingCompletion[task.docPath][segmentIndex]) {
+              workingCompletion[task.docPath][segmentIndex] = true;
+              translatedSegments += 1;
+            }
+          });
           workingUsage.sourceCharacters += result.usage.sourceCharacters;
           workingUsage.billedCharacters += result.usage.billedCharacters ?? 0;
           workingUsage.inputTokens += result.usage.inputTokens ?? 0;
@@ -581,6 +872,7 @@ function App() {
 
           startTransition(() => {
             setTranslatedByPath({ ...workingTranslations });
+            setCompletedByPath({ ...workingCompletion });
             setUsageTotals({ ...workingUsage });
           });
         } catch (error) {
@@ -621,6 +913,7 @@ function App() {
 
       startTransition(() => {
         setTranslatedByPath({ ...workingTranslations });
+        setCompletedByPath({ ...workingCompletion });
         setIssues([...collectedIssues]);
         setUsageTotals({ ...workingUsage });
       });
@@ -638,6 +931,26 @@ function App() {
 
   function handleCancelTranslation() {
     abortControllerRef.current?.abort();
+  }
+
+  async function handleClearSavedData() {
+    abortControllerRef.current?.abort();
+    await clearPersistedSession().catch(() => undefined);
+    setBook(null);
+    setBookBinary(null);
+    setTranslatedByPath({});
+    setCompletedByPath({});
+    setIssues([]);
+    setProgress(INITIAL_PROGRESS);
+    setUsageTotals(INITIAL_USAGE_TOTALS);
+    setSourceCharacterCount(0);
+    setPreviewPath("");
+    setPreviewHtml("");
+    setStatusMessage("Saved data was removed from this browser.");
+    setSelectedEngine("google");
+    setSettings(INITIAL_SETTINGS);
+    setPricingConfig(cloneDefaultPricing());
+    setProviderConfig(cloneDefaultConfig());
   }
 
   async function handleDownload() {
@@ -694,16 +1007,17 @@ function App() {
             <span>Download translated or side-by-side</span>
           </div>
         </div>
-        <div className="hero-note card">
-          <p className="card-label">Your Privacy</p>
-          <ul className="privacy-list">
-            <li>Your original EPUB stays on your device while the book is opened and prepared.</li>
-            <li>This website does not upload the full book file to its own server.</li>
-            <li>Only the text that needs translation is sent to the service you choose.</li>
-            <li>If you use DeepL, those translation requests pass through this website before going to DeepL.</li>
-          </ul>
-        </div>
-      </header>
+          <div className="hero-note card">
+            <p className="card-label">Your Privacy</p>
+            <ul className="privacy-list">
+              <li>Your original EPUB stays on your device while the book is opened and prepared.</li>
+              <li>This website does not upload the full book file to its own server.</li>
+              <li>Only the text that needs translation is sent to the service you choose.</li>
+              <li>If you use DeepL, those translation requests pass through this website before going to DeepL.</li>
+              <li>You can keep the current book and progress in this browser between reloads, and API key saving is optional.</li>
+            </ul>
+          </div>
+        </header>
 
       <main className="workspace">
         <section className="control-stack">
@@ -740,6 +1054,28 @@ function App() {
                   ? `${book.sections.length} readable sections · ${totalSegments} text parts to translate`
                   : "Once your file is ready, you can start reading it here."}
               </span>
+            </div>
+            <div className="toggle-stack">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={persistencePreferences.rememberSession}
+                  onChange={(event) =>
+                    updatePersistencePreference("rememberSession", event.target.checked)
+                  }
+                />
+                <span>
+                  <strong>Keep this book and progress on this device</strong>
+                  <small>After a reload, the book preview and finished translation steps come back here.</small>
+                </span>
+              </label>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => void handleClearSavedData()}
+              >
+                Remove saved browser data
+              </button>
             </div>
           </article>
 
@@ -795,6 +1131,24 @@ function App() {
                     {field.help ? <small>{field.help}</small> : null}
                   </label>
                 ))}
+              </div>
+              <div className="toggle-stack">
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={persistencePreferences.rememberApiKeys}
+                    onChange={(event) =>
+                      updatePersistencePreference("rememberApiKeys", event.target.checked)
+                    }
+                    disabled={!persistencePreferences.rememberSession}
+                  />
+                  <span>
+                    <strong>Remember my API key on this device</strong>
+                    <small>
+                      Keep this turned off if you are on a shared computer. The key is only saved inside this browser.
+                    </small>
+                  </span>
+                </label>
               </div>
             </div>
           </article>
@@ -1045,8 +1399,9 @@ function App() {
               <div className="progress-stats">
                 <span>{statusMessage}</span>
                 <span>
-                  {progress.completedBatches}/{progress.totalBatches} steps done ·{" "}
-                  {progress.translatedSegments}/{progress.totalSegments} text parts translated
+                  {restoringSession
+                    ? "Restoring saved session..."
+                    : `${progress.completedBatches}/${progress.totalBatches} steps done · ${progress.translatedSegments}/${progress.totalSegments} text parts translated`}
                 </span>
               </div>
             </div>

@@ -11,6 +11,8 @@ This project is based on the original workspace `main.py`, but rebuilt as a brow
 - Lets the user choose a translation engine and enter the required key/config fields.
 - Estimates token or character usage before translation starts and shows actual usage while batches finish.
 - Translates in asynchronous batches with configurable concurrency.
+- Can keep the current book, preview, partial translation progress, and settings in the browser between reloads.
+- Lets the user choose whether API keys should also be remembered locally on that device.
 - Supports two export modes:
   - translated text only
   - original and translated text side by side in columns
