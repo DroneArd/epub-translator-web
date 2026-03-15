@@ -1,4 +1,5 @@
 import { startTransition, useEffect, useRef, useState } from "react";
+import type { DragEvent } from "react";
 import {
   buildDownloadBlob,
   buildPreviewDocument,
@@ -311,11 +312,13 @@ function App() {
   const [previewPath, setPreviewPath] = useState("");
   const [previewHtml, setPreviewHtml] = useState("");
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [isUploadDragActive, setIsUploadDragActive] = useState(false);
   const [persistencePreferences, setPersistencePreferences] =
     useState<PersistencePreferences>(loadPersistencePreferences);
   const [restoringSession, setRestoringSession] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const persistenceReadyRef = useRef(false);
+  const uploadDragDepthRef = useRef(0);
 
   const currentDocument = book && previewPath ? book.documents[previewPath] : undefined;
   const currentSectionIndex = book
@@ -561,6 +564,8 @@ function App() {
   }, [book, previewPath, settings.outputMode, translatedByPath]);
 
   async function handleFileSelection(file: File) {
+    setIsUploadDragActive(false);
+    uploadDragDepthRef.current = 0;
     abortControllerRef.current?.abort();
     setProgress({
       ...INITIAL_PROGRESS,
@@ -675,6 +680,68 @@ function App() {
     startTransition(() => {
       setPreviewPath(nextSection.path);
     });
+  }
+
+  function handleUploadDragEnter(event: DragEvent<HTMLLabelElement>) {
+    if (!event.dataTransfer.types.includes("Files")) {
+      return;
+    }
+
+    event.preventDefault();
+    uploadDragDepthRef.current += 1;
+    setIsUploadDragActive(true);
+  }
+
+  function handleUploadDragOver(event: DragEvent<HTMLLabelElement>) {
+    if (!event.dataTransfer.types.includes("Files")) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsUploadDragActive(true);
+  }
+
+  function handleUploadDragLeave(event: DragEvent<HTMLLabelElement>) {
+    if (!event.dataTransfer.types.includes("Files")) {
+      return;
+    }
+
+    event.preventDefault();
+    uploadDragDepthRef.current = Math.max(0, uploadDragDepthRef.current - 1);
+
+    if (uploadDragDepthRef.current === 0) {
+      setIsUploadDragActive(false);
+    }
+  }
+
+  function handleUploadDrop(event: DragEvent<HTMLLabelElement>) {
+    if (!event.dataTransfer.files.length) {
+      return;
+    }
+
+    event.preventDefault();
+    uploadDragDepthRef.current = 0;
+    setIsUploadDragActive(false);
+
+    const file = Array.from(event.dataTransfer.files).find((entry) =>
+      entry.name.toLowerCase().endsWith(".epub"),
+    );
+
+    if (file) {
+      void handleFileSelection(file);
+      return;
+    }
+
+    setIssues([
+      createIssue(
+        selectedEngine,
+        "EPUB import",
+        "Please drop an EPUB file with the .epub ending.",
+        false,
+      ),
+    ]);
+    setStatusMessage("That file does not look like an EPUB.");
   }
 
   async function handleTranslate() {
@@ -1031,7 +1098,13 @@ function App() {
                 {progress.status}
               </span>
             </div>
-            <label className="upload-drop">
+            <label
+              className={`upload-drop ${isUploadDragActive ? "upload-drop--active" : ""}`}
+              onDragEnter={handleUploadDragEnter}
+              onDragOver={handleUploadDragOver}
+              onDragLeave={handleUploadDragLeave}
+              onDrop={handleUploadDrop}
+            >
               <input
                 type="file"
                 accept=".epub,application/epub+zip"
@@ -1042,9 +1115,11 @@ function App() {
                   }
                 }}
               />
-              <span className="upload-title">Choose an EPUB file</span>
+              <span className="upload-title">
+                {isUploadDragActive ? "Drop your EPUB here" : "Choose an EPUB file"}
+              </span>
               <span className="upload-copy">
-                The preview opens automatically after the file is read.
+                Drag an EPUB from your computer into this box, or click to browse. The preview opens automatically after the file is read.
               </span>
             </label>
             <div className="book-meta">
@@ -1078,6 +1153,77 @@ function App() {
               </button>
             </div>
           </article>
+
+          {book ? (
+            <article className="card preview-card control-card--full">
+              <div className="preview-head">
+                <div>
+                  <p className="card-label">Preview</p>
+                  <h2>{currentDocument?.title ?? "Loading preview"}</h2>
+                  <p className="preview-subtitle">
+                    {`Part ${Math.max(currentSectionIndex + 1, 1)} of ${book.sections.length}`}
+                  </p>
+                </div>
+                <div className="preview-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => moveSection(-1)}
+                    disabled={currentSectionIndex <= 0}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => moveSection(1)}
+                    disabled={currentSectionIndex >= book.sections.length - 1}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+              <div className="preview-layout">
+                <aside className="chapter-list">
+                  {book.sections.map((section) => (
+                    <button
+                      key={section.path}
+                      type="button"
+                      className={
+                        section.path === previewPath
+                          ? "chapter-button chapter-button--active"
+                          : "chapter-button"
+                      }
+                      onClick={() => {
+                        startTransition(() => {
+                          setPreviewPath(section.path);
+                        });
+                      }}
+                    >
+                      <span>{section.order + 1}</span>
+                      <strong>{section.title}</strong>
+                    </button>
+                  ))}
+                </aside>
+                <div className="reader-frame">
+                  {previewHtml ? (
+                    <iframe
+                      title="EPUB preview"
+                      sandbox=""
+                      srcDoc={previewHtml}
+                    />
+                  ) : (
+                    <div className="reader-empty">
+                      <h3>Preparing the preview</h3>
+                      <p>
+                        Your book is loaded. The preview will appear here in a moment.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </article>
+          ) : null}
 
           <article className="card control-card control-card--service">
             <div className="card-head">
@@ -1507,84 +1653,6 @@ function App() {
                   Everything looks good so far. If anything goes wrong, the details will appear here.
                 </p>
               )}
-            </div>
-          </article>
-        </section>
-
-        <section className="preview-shell">
-          <article className="card preview-card">
-            <div className="preview-head">
-              <div>
-                <p className="card-label">Book Preview</p>
-                <h2>{currentDocument?.title ?? "Waiting for your book"}</h2>
-                <p className="preview-subtitle">
-                  {book
-                    ? `Part ${Math.max(currentSectionIndex + 1, 1)} of ${book.sections.length}`
-                    : "Choose a book to open the preview."}
-                </p>
-              </div>
-              <div className="preview-actions">
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => moveSection(-1)}
-                  disabled={!book || currentSectionIndex <= 0}
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => moveSection(1)}
-                  disabled={!book || currentSectionIndex >= book.sections.length - 1}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-            <div className="preview-layout">
-              <aside className="chapter-list">
-                {book ? (
-                  book.sections.map((section) => (
-                    <button
-                      key={section.path}
-                      type="button"
-                      className={
-                        section.path === previewPath
-                          ? "chapter-button chapter-button--active"
-                          : "chapter-button"
-                      }
-                      onClick={() => {
-                        startTransition(() => {
-                          setPreviewPath(section.path);
-                        });
-                      }}
-                    >
-                      <span>{section.order + 1}</span>
-                      <strong>{section.title}</strong>
-                    </button>
-                  ))
-                ) : (
-                  <p className="empty-copy">The list of sections will appear here after your book is opened.</p>
-                )}
-              </aside>
-              <div className="reader-frame">
-                {previewHtml ? (
-                  <iframe
-                    title="EPUB preview"
-                    sandbox=""
-                    srcDoc={previewHtml}
-                  />
-                ) : (
-                  <div className="reader-empty">
-                    <h3>Your preview will appear here</h3>
-                    <p>
-                      Once your EPUB is opened, you can start reading right away. As translation
-                      finishes, this preview updates automatically.
-                    </p>
-                  </div>
-                )}
-              </div>
             </div>
           </article>
         </section>

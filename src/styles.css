@@ -229,6 +229,19 @@ button {
   background:
     linear-gradient(180deg, rgba(250, 244, 232, 0.82), rgba(255, 252, 246, 0.96));
   padding: 1.25rem;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.upload-drop--active {
+  border-color: rgba(20, 108, 83, 0.62);
+  background:
+    linear-gradient(180deg, rgba(226, 246, 239, 0.95), rgba(245, 255, 251, 0.98));
+  box-shadow: 0 0 0 5px rgba(20, 108, 83, 0.12);
+  transform: translateY(-1px);
 }
 
 .upload-drop input {
