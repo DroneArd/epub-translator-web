@@ -100,7 +100,7 @@ function App() {
   const [issues, setIssues] = useState<TranslationIssue[]>([]);
   const [progress, setProgress] = useState<TranslationProgress>(INITIAL_PROGRESS);
   const [statusMessage, setStatusMessage] = useState(
-    "Load an EPUB to parse it locally and open the live preview.",
+    "Choose an EPUB file to get started.",
   );
   const [previewPath, setPreviewPath] = useState("");
   const [previewHtml, setPreviewHtml] = useState("");
@@ -161,7 +161,7 @@ function App() {
       ...INITIAL_PROGRESS,
       status: "loading",
     });
-    setStatusMessage("Parsing EPUB locally. Nothing leaves the browser during this step.");
+    setStatusMessage("Opening your book on this device...");
     setIssues([]);
     setBook(null);
     setPreviewPath("");
@@ -179,7 +179,7 @@ function App() {
         totalSegments: segmentCount,
       });
       setStatusMessage(
-        `Ready. Parsed ${loadedBook.sections.length} readable sections and ${segmentCount} translatable text fragments locally.`,
+        `Your book is ready. We found ${loadedBook.sections.length} readable sections and ${segmentCount} pieces of text that can be translated.`,
       );
 
       startTransition(() => {
@@ -190,7 +190,7 @@ function App() {
         ...INITIAL_PROGRESS,
         status: "error",
       });
-      setStatusMessage("This EPUB could not be parsed.");
+      setStatusMessage("We could not open this EPUB file.");
       setIssues([
         createIssue(
           selectedEngine,
@@ -240,7 +240,7 @@ function App() {
   async function handleTranslate() {
     if (!book) {
       setIssues([
-        createIssue(selectedEngine, "Translation", "Load an EPUB before translating.", false),
+        createIssue(selectedEngine, "Translation", "Choose an EPUB file before starting.", false),
       ]);
       return;
     }
@@ -249,8 +249,8 @@ function App() {
       setIssues([
         createIssue(
           selectedEngine,
-          "Target language",
-          "Choose a target language code such as en, de, fr, or ja.",
+          "Language",
+          "Enter the language you want, for example en for English, de for German, or fr for French.",
           false,
         ),
       ]);
@@ -266,7 +266,7 @@ function App() {
           false,
         ),
       ]);
-      setStatusMessage("This provider cannot run in the current deployment mode.");
+      setStatusMessage("This translation option is not available right now.");
       return;
     }
 
@@ -279,13 +279,13 @@ function App() {
         createIssue(
           selectedEngine,
           ENGINE_CATALOG[selectedEngine].label,
-          `Missing required field${missingFields.length > 1 ? "s" : ""}: ${missingFields
+          `Please fill in ${missingFields.length > 1 ? "these fields" : "this field"}: ${missingFields
             .map((field) => field.label)
             .join(", ")}.`,
           false,
         ),
       ]);
-      setStatusMessage("Fill in the required engine fields before starting translation.");
+      setStatusMessage("Please complete the missing information first.");
       return;
     }
 
@@ -321,7 +321,7 @@ function App() {
         createIssue(
           selectedEngine,
           "Translation",
-          "No translatable text nodes were found in this EPUB.",
+          "We could not find any readable text to translate in this EPUB.",
           false,
         ),
       ]);
@@ -351,7 +351,7 @@ function App() {
 
     setTranslatedByPath(workingTranslations);
     setIssues([]);
-    setStatusMessage("Translation started. Preview updates as each batch completes.");
+    setStatusMessage("Translation has started. The preview will update as each part finishes.");
     setProgress({
       status: "translating",
       totalSegments,
@@ -428,7 +428,7 @@ function App() {
       if (controller.signal.aborted) {
         syncProgress("ready");
         setStatusMessage(
-          "Translation cancelled. Completed batches remain in the preview and export.",
+          "Translation was stopped. Anything already translated is still shown in the preview and will stay in the download.",
         );
         return;
       }
@@ -441,8 +441,8 @@ function App() {
       syncProgress("done");
       setStatusMessage(
         collectedIssues.length
-          ? `Finished with ${collectedIssues.length} batch error(s). Failed batches stayed in the source language.`
-          : "Translation finished. You can keep reading, switch modes, or download the EPUB.",
+          ? `Finished with ${collectedIssues.length} problem(s). Any part that failed was left in the original language.`
+          : "Translation is finished. You can keep reading, change the layout, or download the new EPUB.",
       );
     } finally {
       abortControllerRef.current = null;
@@ -472,7 +472,7 @@ function App() {
       );
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-      setStatusMessage("Download started. The EPUB was generated entirely in the browser.");
+      setStatusMessage("Your download has started.");
     } catch (error) {
       setIssues((current) => [
         ...current,
@@ -483,7 +483,7 @@ function App() {
           false,
         ),
       ]);
-      setStatusMessage("The EPUB could not be generated.");
+      setStatusMessage("We could not create the new EPUB file.");
     } finally {
       setDownloadBusy(false);
     }
@@ -494,27 +494,26 @@ function App() {
       <div className="page-backdrop" />
       <header className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">Static EPUB Translation</p>
-          <h1>Translate EPUBs without uploading the book to your hosted server.</h1>
+          <p className="eyebrow">Translate Your EPUB</p>
+          <h1>Upload a book, preview it, and download a translated copy.</h1>
           <p className="hero-summary">
-            This repo rebuilds the original Python script as a static TypeScript site.
-            EPUB parsing, preview, batching, and export happen locally in the tab.
-            Google and OpenAI can be called directly, and DeepL is routed through a same-origin
-            Cloudflare Pages Function so the user only needs to visit the website and enter a key.
+            Open your EPUB, choose a translation service, enter your API key, and start the
+            translation. You can read the book while it is being translated and then download a
+            new EPUB when it is done.
           </p>
           <div className="hero-badges">
-            <span>Local EPUB parsing</span>
-            <span>Concurrent translation batches</span>
-            <span>Single or parallel text export</span>
+            <span>Preview before downloading</span>
+            <span>Choose your translation service</span>
+            <span>Download translated or side-by-side</span>
           </div>
         </div>
         <div className="hero-note card">
-          <p className="card-label">Privacy boundary</p>
+          <p className="card-label">Your Privacy</p>
           <ul className="privacy-list">
-            <li>The uploaded `.epub` stays in browser memory.</li>
-            <li>Your static host never receives the full EPUB archive.</li>
-            <li>For DeepL, the API key and text batches pass through the Cloudflare proxy route before reaching DeepL.</li>
-            <li>For Google and OpenAI, the browser sends text batches directly to the selected engine.</li>
+            <li>Your original EPUB stays on your device while the book is opened and prepared.</li>
+            <li>This website does not upload the full book file to its own server.</li>
+            <li>Only the text that needs translation is sent to the service you choose.</li>
+            <li>If you use DeepL, those translation requests pass through this website before going to DeepL.</li>
           </ul>
         </div>
       </header>
@@ -525,7 +524,7 @@ function App() {
             <div className="card-head">
               <div>
                 <p className="card-label">1. EPUB</p>
-                <h2>Load a book</h2>
+                <h2>Choose your book</h2>
               </div>
               <span className={`status-pill status-pill--${progress.status}`}>
                 {progress.status}
@@ -542,17 +541,17 @@ function App() {
                   }
                 }}
               />
-              <span className="upload-title">Choose an EPUB</span>
+              <span className="upload-title">Choose an EPUB file</span>
               <span className="upload-copy">
-                The parser reads `container.xml`, the OPF spine, and the XHTML files locally.
+                The preview opens automatically after the file is read.
               </span>
             </label>
             <div className="book-meta">
-              <strong>{book?.title ?? "No book loaded yet"}</strong>
+              <strong>{book?.title ?? "No book chosen yet"}</strong>
               <span>
                 {book
-                  ? `${book.sections.length} previewable sections · ${totalSegments} translatable fragments`
-                  : "The preview opens as soon as a file is parsed."}
+                  ? `${book.sections.length} readable sections · ${totalSegments} text parts to translate`
+                  : "Once your file is ready, you can start reading it here."}
               </span>
             </div>
           </article>
@@ -561,7 +560,7 @@ function App() {
             <div className="card-head">
               <div>
                 <p className="card-label">2. Engine</p>
-                <h2>Choose a translation provider</h2>
+                <h2>Choose a translation service</h2>
               </div>
             </div>
             <div className="engine-grid">
@@ -617,32 +616,32 @@ function App() {
             <div className="card-head">
               <div>
                 <p className="card-label">3. Translation</p>
-                <h2>Languages, batching, and layout</h2>
+                <h2>Choose language and download style</h2>
               </div>
             </div>
             <div className="field-grid field-grid--compact">
               <label className="field">
-                <span>Source language</span>
+                <span>Current language</span>
                 <input
                   type="text"
                   placeholder="auto"
                   value={settings.sourceLanguage}
                   onChange={(event) => updateSetting("sourceLanguage", event.target.value)}
                 />
-                <small>Optional. Leave blank when the provider should detect it.</small>
+                <small>Optional. Leave this empty if you want the service to detect the language.</small>
               </label>
               <label className="field">
-                <span>Target language</span>
+                <span>Translate into</span>
                 <input
                   type="text"
                   placeholder="en"
                   value={settings.targetLanguage}
                   onChange={(event) => updateSetting("targetLanguage", event.target.value)}
                 />
-                <small>Use short language codes like `en`, `de`, `fr`, `es`, or `ja`.</small>
+                <small>Use short codes like `en` for English, `de` for German, or `fr` for French.</small>
               </label>
               <label className="field">
-                <span>Batch size</span>
+                <span>Texts per step</span>
                 <input
                   type="number"
                   min={1}
@@ -652,10 +651,10 @@ function App() {
                     updateSetting("batchSize", Number(event.target.value) || 1)
                   }
                 />
-                <small>Texts per request. Larger batches are faster until the provider times out.</small>
+                <small>Higher numbers can be faster, but very large numbers may fail more often.</small>
               </label>
               <label className="field">
-                <span>Concurrency</span>
+                <span>Requests at the same time</span>
                 <input
                   type="number"
                   min={1}
@@ -665,7 +664,7 @@ function App() {
                     updateSetting("concurrency", Number(event.target.value) || 1)
                   }
                 />
-                <small>Concurrent requests. Increase carefully to avoid rate limits.</small>
+                <small>Higher numbers can be faster, but some services may slow down or reject too many requests.</small>
               </label>
             </div>
 
@@ -677,7 +676,7 @@ function App() {
                 }
                 onClick={() => updateSetting("outputMode", "translated")}
               >
-                Save translated text only
+                Only translated text
               </button>
               <button
                 type="button"
@@ -686,13 +685,12 @@ function App() {
                 }
                 onClick={() => updateSetting("outputMode", "parallel")}
               >
-                Save original + translation in columns
+                Original and translation side by side
               </button>
             </div>
             <p className="helper-copy">
-              Dry run behavior: before translation finishes, the preview uses the original text as
-              both input and output. In parallel mode, you will see the same text in both columns
-              until a translated batch arrives.
+              Before a section is translated, the preview still shows the original text. In the
+              side-by-side view, both columns will look the same until the translated version is ready.
             </p>
 
             <div className="action-row">
@@ -716,7 +714,7 @@ function App() {
                 onClick={handleCancelTranslation}
                 disabled={progress.status !== "translating"}
               >
-                Cancel
+                Stop
               </button>
               <button
                 type="button"
@@ -724,7 +722,7 @@ function App() {
                 onClick={() => void handleDownload()}
                 disabled={!book || downloadBusy}
               >
-                {downloadBusy ? "Building EPUB..." : "Download EPUB"}
+                {downloadBusy ? "Preparing download..." : "Download EPUB"}
               </button>
             </div>
           </article>
@@ -733,7 +731,7 @@ function App() {
             <div className="card-head">
               <div>
                 <p className="card-label">4. Status</p>
-                <h2>Progress and errors</h2>
+                <h2>Progress and messages</h2>
               </div>
             </div>
             <div className="progress-panel">
@@ -746,8 +744,8 @@ function App() {
               <div className="progress-stats">
                 <span>{statusMessage}</span>
                 <span>
-                  {progress.completedBatches}/{progress.totalBatches} batches ·{" "}
-                  {progress.translatedSegments}/{progress.totalSegments} translated fragments
+                  {progress.completedBatches}/{progress.totalBatches} steps done ·{" "}
+                  {progress.translatedSegments}/{progress.totalSegments} text parts translated
                 </span>
               </div>
             </div>
@@ -772,8 +770,7 @@ function App() {
                 ))
               ) : (
                 <p className="empty-copy">
-                  No provider or export errors yet. Failed batches will stay in the source language
-                  and appear here.
+                  Everything looks good so far. If anything goes wrong, the details will appear here.
                 </p>
               )}
             </div>
@@ -783,7 +780,7 @@ function App() {
             <div className="card-head">
               <div>
                 <p className="card-label">5. Setup guide</p>
-                <h2>How to get the required keys</h2>
+                <h2>How to get your API key</h2>
               </div>
             </div>
             <div className="guide-block">
@@ -806,12 +803,12 @@ function App() {
           <article className="card preview-card">
             <div className="preview-head">
               <div>
-                <p className="card-label">Reader preview</p>
-                <h2>{currentDocument?.title ?? "Waiting for an EPUB"}</h2>
+                <p className="card-label">Book Preview</p>
+                <h2>{currentDocument?.title ?? "Waiting for your book"}</h2>
                 <p className="preview-subtitle">
                   {book
-                    ? `Section ${Math.max(currentSectionIndex + 1, 1)} of ${book.sections.length}`
-                    : "Upload a book to open the reader preview."}
+                    ? `Part ${Math.max(currentSectionIndex + 1, 1)} of ${book.sections.length}`
+                    : "Choose a book to open the preview."}
                 </p>
               </div>
               <div className="preview-actions">
@@ -856,7 +853,7 @@ function App() {
                     </button>
                   ))
                 ) : (
-                  <p className="empty-copy">The chapter list appears after the EPUB is parsed.</p>
+                  <p className="empty-copy">The list of sections will appear here after your book is opened.</p>
                 )}
               </aside>
               <div className="reader-frame">
@@ -868,10 +865,10 @@ function App() {
                   />
                 ) : (
                   <div className="reader-empty">
-                    <h3>Client-side preview</h3>
+                    <h3>Your preview will appear here</h3>
                     <p>
-                      The app will parse the EPUB locally, open the first section, and keep the
-                      preview in sync with your output mode and completed translation batches.
+                      Once your EPUB is opened, you can start reading right away. As translation
+                      finishes, this preview updates automatically.
                     </p>
                   </div>
                 )}
