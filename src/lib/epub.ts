@@ -401,11 +401,37 @@ function stripStylesheetLinks(doc: Document) {
   }
 }
 
-function extractOriginalPrefix(sourceText: string) {
-  const match = sourceText.match(
-    /^\s*((?:<\?xml[\s\S]*?\?>\s*)?(?:<!DOCTYPE[\s\S]*?>\s*)?)/i,
-  );
-  return match?.[1] ?? "";
+function extractOriginalPrefixParts(sourceText: string) {
+  let remaining = sourceText;
+  let xmlDeclaration = "";
+  let doctype = "";
+
+  const xmlMatch = remaining.match(/^\s*(<\?xml[\s\S]*?\?>\s*)/i);
+  if (xmlMatch) {
+    xmlDeclaration = xmlMatch[1];
+    remaining = remaining.slice(xmlMatch[0].length);
+  }
+
+  const doctypeMatch = remaining.match(/^\s*(<!DOCTYPE[\s\S]*?>\s*)/i);
+  if (doctypeMatch) {
+    doctype = doctypeMatch[1];
+  }
+
+  return {
+    xmlDeclaration,
+    doctype,
+  };
+}
+
+function detectSerializedPreamble(serialized: string) {
+  const trimmed = serialized.trimStart();
+  const xmlMatch = trimmed.match(/^<\?xml[\s\S]*?\?>\s*/i);
+  const afterXml = xmlMatch ? trimmed.slice(xmlMatch[0].length) : trimmed;
+
+  return {
+    hasXmlDeclaration: Boolean(xmlMatch),
+    hasDoctype: /^<!DOCTYPE/i.test(afterXml),
+  };
 }
 
 function serializeDocument(
@@ -415,12 +441,28 @@ function serializeDocument(
   hasHtmlRoot: boolean,
 ) {
   const serialized = new XMLSerializer().serializeToString(doc);
+  const { xmlDeclaration, doctype } = extractOriginalPrefixParts(sourceText);
+  const { hasXmlDeclaration, hasDoctype } = detectSerializedPreamble(serialized);
 
   if (preview) {
-    return hasHtmlRoot ? `<!DOCTYPE html>\n${serialized}` : serialized;
+    if (hasHtmlRoot && !hasXmlDeclaration && !hasDoctype) {
+      return `<!DOCTYPE html>\n${serialized}`;
+    }
+
+    return serialized;
   }
 
-  return `${extractOriginalPrefix(sourceText)}${serialized}`;
+  let prefix = "";
+
+  if (!hasXmlDeclaration && xmlDeclaration) {
+    prefix += xmlDeclaration;
+  }
+
+  if (!hasDoctype && doctype) {
+    prefix += doctype;
+  }
+
+  return `${prefix}${serialized}`;
 }
 
 export async function loadEpub(file: File) {
