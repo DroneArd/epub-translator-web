@@ -104,3 +104,26 @@ export interface ProviderRequest {
   config: Record<string, string>;
   signal: AbortSignal;
 }
+
+export interface ProviderBatchUsage {
+  sourceCharacters: number;
+  billedCharacters: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+}
+
+export interface ProviderBatchResult {
+  translations: string[];
+  usage: ProviderBatchUsage;
+}
+
+export interface TranslationUsageTotals {
+  engine: EngineId | null;
+  sourceCharacters: number;
+  billedCharacters: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  successfulBatches: number;
+}

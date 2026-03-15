@@ -9,6 +9,7 @@ This project is based on the original workspace `main.py`, but rebuilt as a brow
 - Loads an `.epub` file locally in the browser.
 - Parses `META-INF/container.xml`, the OPF package, and the spine to open a preview immediately.
 - Lets the user choose a translation engine and enter the required key/config fields.
+- Estimates token or character usage before translation starts and shows actual usage while batches finish.
 - Translates in asynchronous batches with configurable concurrency.
 - Supports two export modes:
   - translated text only

@@ -43,6 +43,7 @@ export const ENGINE_CATALOG: Record<EngineId, EngineDefinition> = {
     notes: [
       "This website does not store the key on its own server.",
       "The key stays in your browser during this session, but OpenAI still advises care with website-based keys.",
+      "OpenAI charges by tokens. This page can show a rough estimate before you start and actual token counts after finished steps when OpenAI returns them.",
     ],
   },
   google: {
@@ -73,6 +74,7 @@ export const ENGINE_CATALOG: Record<EngineId, EngineDefinition> = {
     notes: [
       "Only the text being translated is sent to Google, not the full EPUB file.",
       "If you plan to publish this website, domain restrictions on the key are strongly recommended.",
+      "Google bills by characters, so this page can estimate the size of the job before you start.",
     ],
   },
   deepl: {
@@ -110,6 +112,7 @@ export const ENGINE_CATALOG: Record<EngineId, EngineDefinition> = {
     notes: [
       "Your EPUB file still stays on your device while you read and prepare it.",
       "For DeepL only, the key and the text to translate pass through this website's Cloudflare connection before they reach DeepL.",
+      "DeepL bills by characters, so this page can give a close estimate before you start and show billed characters during translation.",
     ],
   },
 };

@@ -18,6 +18,7 @@ import type {
   TranslationIssue,
   TranslationProgress,
   TranslationSettings,
+  TranslationUsageTotals,
 } from "./types";
 
 const INITIAL_PROGRESS: TranslationProgress = {
@@ -37,6 +38,46 @@ const INITIAL_SETTINGS: TranslationSettings = {
   concurrency: 4,
 };
 
+const INITIAL_USAGE_TOTALS: TranslationUsageTotals = {
+  engine: null,
+  sourceCharacters: 0,
+  billedCharacters: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+  successfulBatches: 0,
+};
+
+type PricingConfigRecord = {
+  openai: {
+    inputPerMillionTokens: string;
+    outputPerMillionTokens: string;
+  };
+  google: {
+    perMillionCharacters: string;
+  };
+  deepl: {
+    perMillionCharacters: string;
+  };
+};
+
+const INITIAL_PRICING: PricingConfigRecord = {
+  openai: {
+    inputPerMillionTokens: "",
+    outputPerMillionTokens: "",
+  },
+  google: {
+    perMillionCharacters: "",
+  },
+  deepl: {
+    perMillionCharacters: "",
+  },
+};
+
+function cloneDefaultPricing(): PricingConfigRecord {
+  return JSON.parse(JSON.stringify(INITIAL_PRICING)) as PricingConfigRecord;
+}
+
 function cloneDefaultConfig(): ProviderConfigRecord {
   return JSON.parse(JSON.stringify(DEFAULT_PROVIDER_CONFIG)) as ProviderConfigRecord;
 }
@@ -48,6 +89,22 @@ function sumSegments(book: EpubBook | null) {
 
   return Object.values(book.documents).reduce(
     (total, documentRecord) => total + documentRecord.segmentCount,
+    0,
+  );
+}
+
+function countCodePoints(value: string) {
+  return Array.from(value).length;
+}
+
+function countBookCharacters(book: EpubBook) {
+  return Object.values(book.documents).reduce(
+    (total, documentRecord) =>
+      total +
+      documentRecord.sourceTexts.reduce(
+        (segmentTotal, text) => segmentTotal + countCodePoints(text),
+        0,
+      ),
     0,
   );
 }
@@ -68,6 +125,63 @@ function formatErrorMessage(error: unknown) {
   }
 
   return String(error);
+}
+
+function estimateOpenAiTokens(sourceCharacters: number) {
+  if (!sourceCharacters) {
+    return 0;
+  }
+
+  return Math.ceil(sourceCharacters / 4);
+}
+
+function parseRate(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed.replace(",", "."));
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function calculateCharacterCost(rate: string, characters: number) {
+  const parsedRate = parseRate(rate);
+  if (parsedRate === null) {
+    return null;
+  }
+
+  return (characters / 1_000_000) * parsedRate;
+}
+
+function calculateOpenAiCost(
+  pricing: PricingConfigRecord["openai"],
+  inputTokens: number,
+  outputTokens: number,
+) {
+  const inputRate = parseRate(pricing.inputPerMillionTokens);
+  const outputRate = parseRate(pricing.outputPerMillionTokens);
+
+  if (inputRate === null || outputRate === null) {
+    return null;
+  }
+
+  return (inputTokens / 1_000_000) * inputRate + (outputTokens / 1_000_000) * outputRate;
+}
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat().format(Math.round(value));
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: value < 1 ? 4 : 2,
+    maximumFractionDigits: value < 1 ? 6 : 2,
+  }).format(value);
 }
 
 function createIssue(
@@ -95,10 +209,17 @@ function App() {
   const [providerConfig, setProviderConfig] = useState<ProviderConfigRecord>(
     cloneDefaultConfig,
   );
+  const [pricingConfig, setPricingConfig] = useState<PricingConfigRecord>(
+    cloneDefaultPricing,
+  );
   const [settings, setSettings] = useState<TranslationSettings>(INITIAL_SETTINGS);
   const [translatedByPath, setTranslatedByPath] = useState<Record<string, string[]>>({});
   const [issues, setIssues] = useState<TranslationIssue[]>([]);
   const [progress, setProgress] = useState<TranslationProgress>(INITIAL_PROGRESS);
+  const [usageTotals, setUsageTotals] = useState<TranslationUsageTotals>(
+    INITIAL_USAGE_TOTALS,
+  );
+  const [sourceCharacterCount, setSourceCharacterCount] = useState(0);
   const [statusMessage, setStatusMessage] = useState(
     "Choose an EPUB file to get started.",
   );
@@ -115,6 +236,38 @@ function App() {
   const progressPercent = progress.totalBatches
     ? Math.round((progress.completedBatches / progress.totalBatches) * 100)
     : 0;
+  const selectedPricing = pricingConfig[selectedEngine];
+  const selectedUsageTotals =
+    usageTotals.engine === selectedEngine ? usageTotals : null;
+  const estimatedInputTokens =
+    selectedEngine === "openai" ? estimateOpenAiTokens(sourceCharacterCount) : 0;
+  const estimatedOutputTokens = selectedEngine === "openai" ? estimatedInputTokens : 0;
+  const estimatedBilledCharacters =
+    selectedEngine === "openai" ? 0 : sourceCharacterCount;
+  const estimatedCost =
+    selectedEngine === "openai"
+      ? calculateOpenAiCost(
+          pricingConfig.openai,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+        )
+      : calculateCharacterCost(
+          pricingConfig[selectedEngine].perMillionCharacters,
+          estimatedBilledCharacters,
+        );
+  const actualCost =
+    !selectedUsageTotals
+      ? null
+      : selectedEngine === "openai"
+        ? calculateOpenAiCost(
+            pricingConfig.openai,
+            selectedUsageTotals.inputTokens,
+            selectedUsageTotals.outputTokens,
+          )
+        : calculateCharacterCost(
+            pricingConfig[selectedEngine].perMillionCharacters,
+            selectedUsageTotals.billedCharacters,
+          );
 
   useEffect(() => {
     return () => {
@@ -161,6 +314,8 @@ function App() {
       ...INITIAL_PROGRESS,
       status: "loading",
     });
+    setUsageTotals(INITIAL_USAGE_TOTALS);
+    setSourceCharacterCount(0);
     setStatusMessage("Opening your book on this device...");
     setIssues([]);
     setBook(null);
@@ -171,8 +326,10 @@ function App() {
       const loadedBook = await loadEpub(file);
       const baselineTranslations = buildBaselineTranslations(loadedBook);
       const segmentCount = sumSegments(loadedBook);
+      const characterCount = countBookCharacters(loadedBook);
       setBook(loadedBook);
       setTranslatedByPath(baselineTranslations);
+      setSourceCharacterCount(characterCount);
       setProgress({
         ...INITIAL_PROGRESS,
         status: "ready",
@@ -204,6 +361,20 @@ function App() {
 
   function updateProviderConfig(engine: EngineId, field: string, value: string) {
     setProviderConfig((current) => ({
+      ...current,
+      [engine]: {
+        ...current[engine],
+        [field]: value,
+      },
+    }));
+  }
+
+  function updatePricingConfig(
+    engine: EngineId,
+    field: string,
+    value: string,
+  ) {
+    setPricingConfig((current) => ({
       ...current,
       [engine]: {
         ...current[engine],
@@ -337,6 +508,10 @@ function App() {
     let completedBatches = 0;
     let activeBatches = 0;
     let translatedSegments = 0;
+    const workingUsage: TranslationUsageTotals = {
+      ...INITIAL_USAGE_TOTALS,
+      engine: selectedEngine,
+    };
 
     const syncProgress = (status: TranslationProgress["status"]) => {
       setProgress({
@@ -360,6 +535,7 @@ function App() {
       completedBatches: 0,
       activeBatches: 0,
     });
+    setUsageTotals(workingUsage);
 
     const workers = Array.from({ length: workerCount }, async () => {
       while (!controller.signal.aborted) {
@@ -373,13 +549,14 @@ function App() {
         syncProgress("translating");
 
         try {
-          const translatedTexts = await translateBatch(selectedEngine, {
+          const result = await translateBatch(selectedEngine, {
             texts: task.texts,
             sourceLanguage,
             targetLanguage,
             config: providerConfig[selectedEngine],
             signal: controller.signal,
           });
+          const translatedTexts = result.translations;
 
           if (translatedTexts.length !== task.texts.length) {
             throw new Error(
@@ -393,9 +570,18 @@ function App() {
             ...translatedTexts,
           );
           translatedSegments += translatedTexts.length;
+          workingUsage.sourceCharacters += result.usage.sourceCharacters;
+          workingUsage.billedCharacters += result.usage.billedCharacters ?? 0;
+          workingUsage.inputTokens += result.usage.inputTokens ?? 0;
+          workingUsage.outputTokens += result.usage.outputTokens ?? 0;
+          workingUsage.totalTokens +=
+            result.usage.totalTokens ??
+            ((result.usage.inputTokens ?? 0) + (result.usage.outputTokens ?? 0));
+          workingUsage.successfulBatches += 1;
 
           startTransition(() => {
             setTranslatedByPath({ ...workingTranslations });
+            setUsageTotals({ ...workingUsage });
           });
         } catch (error) {
           if (controller.signal.aborted) {
@@ -436,6 +622,7 @@ function App() {
       startTransition(() => {
         setTranslatedByPath({ ...workingTranslations });
         setIssues([...collectedIssues]);
+        setUsageTotals({ ...workingUsage });
       });
 
       syncProgress("done");
@@ -668,6 +855,120 @@ function App() {
               </label>
             </div>
 
+            <div className="usage-panel">
+              <div className="usage-head">
+                <strong>Estimated usage before you start</strong>
+                <span>{selectedEngine === "openai" ? "Rough guide" : "Close guide"}</span>
+              </div>
+              {book ? (
+                <>
+                  <div className="usage-grid">
+                    <article className="usage-stat">
+                      <span>Book text size</span>
+                      <strong>{formatCount(sourceCharacterCount)} characters</strong>
+                    </article>
+                    {selectedEngine === "openai" ? (
+                      <>
+                        <article className="usage-stat">
+                          <span>Approx. input tokens</span>
+                          <strong>{formatCount(estimatedInputTokens)}</strong>
+                        </article>
+                        <article className="usage-stat">
+                          <span>Approx. output tokens</span>
+                          <strong>{formatCount(estimatedOutputTokens)}</strong>
+                        </article>
+                      </>
+                    ) : (
+                      <article className="usage-stat">
+                        <span>Estimated billed characters</span>
+                        <strong>{formatCount(estimatedBilledCharacters)}</strong>
+                      </article>
+                    )}
+                    <article className="usage-stat">
+                      <span>How this service charges</span>
+                      <strong>{selectedEngine === "openai" ? "Tokens" : "Characters"}</strong>
+                    </article>
+                  </div>
+
+                  <div className="field-grid field-grid--compact price-grid">
+                    {selectedEngine === "openai" ? (
+                      <>
+                        <label className="field">
+                          <span>Input price per 1M tokens</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="Optional"
+                            value={pricingConfig.openai.inputPerMillionTokens}
+                            onChange={(event) =>
+                              updatePricingConfig(
+                                "openai",
+                                "inputPerMillionTokens",
+                                event.target.value,
+                              )
+                            }
+                          />
+                          <small>Use your own currency. Example: 0.15 or 2.50.</small>
+                        </label>
+                        <label className="field">
+                          <span>Output price per 1M tokens</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="Optional"
+                            value={pricingConfig.openai.outputPerMillionTokens}
+                            onChange={(event) =>
+                              updatePricingConfig(
+                                "openai",
+                                "outputPerMillionTokens",
+                                event.target.value,
+                              )
+                            }
+                          />
+                          <small>The estimate uses the same currency you enter above.</small>
+                        </label>
+                      </>
+                    ) : (
+                      <label className="field">
+                        <span>Price per 1M characters</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Optional"
+                          value={pricingConfig[selectedEngine].perMillionCharacters}
+                          onChange={(event) =>
+                            updatePricingConfig(
+                              selectedEngine,
+                              "perMillionCharacters",
+                              event.target.value,
+                            )
+                          }
+                        />
+                        <small>Use the price from your account. The estimate uses the same currency.</small>
+                      </label>
+                    )}
+                  </div>
+
+                  <p className="usage-summary">
+                    {estimatedCost !== null
+                      ? `Estimated cost for the whole book: ${formatMoney(estimatedCost)}`
+                      : selectedEngine === "openai"
+                        ? "Add your input and output token prices above if you want a money estimate."
+                        : "Add your character price above if you want a money estimate."}
+                  </p>
+                  <p className="usage-note">
+                    {selectedEngine === "openai"
+                      ? "OpenAI estimates are based on about 4 characters per token, so the final numbers can be a bit lower or higher."
+                      : "Character-based services are easier to predict because they usually bill from the source text length."}
+                  </p>
+                </>
+              ) : (
+                <p className="empty-copy">
+                  Choose a book first and the usage estimate will appear here.
+                </p>
+              )}
+            </div>
+
             <div className="mode-toggle">
               <button
                 type="button"
@@ -748,6 +1049,68 @@ function App() {
                   {progress.translatedSegments}/{progress.totalSegments} text parts translated
                 </span>
               </div>
+            </div>
+            <div className="usage-panel">
+              <div className="usage-head">
+                <strong>
+                  {progress.status === "translating"
+                    ? "Actual usage so far"
+                    : "Actual usage from completed translation"}
+                </strong>
+                <span>
+                  {selectedUsageTotals?.successfulBatches ?? 0} successful{" "}
+                  {(selectedUsageTotals?.successfulBatches ?? 0) === 1 ? "step" : "steps"}
+                </span>
+              </div>
+              {selectedUsageTotals?.successfulBatches ? (
+                <>
+                  <div className="usage-grid">
+                    <article className="usage-stat">
+                      <span>Characters sent</span>
+                      <strong>{formatCount(selectedUsageTotals.sourceCharacters)}</strong>
+                    </article>
+                    {selectedEngine === "openai" ? (
+                      <>
+                        <article className="usage-stat">
+                          <span>Input tokens</span>
+                          <strong>{formatCount(selectedUsageTotals.inputTokens)}</strong>
+                        </article>
+                        <article className="usage-stat">
+                          <span>Output tokens</span>
+                          <strong>{formatCount(selectedUsageTotals.outputTokens)}</strong>
+                        </article>
+                      </>
+                    ) : (
+                      <article className="usage-stat">
+                        <span>Billed characters</span>
+                        <strong>{formatCount(selectedUsageTotals.billedCharacters)}</strong>
+                      </article>
+                    )}
+                    <article className="usage-stat">
+                      <span>Total text parts finished</span>
+                      <strong>{formatCount(progress.translatedSegments)}</strong>
+                    </article>
+                  </div>
+                  <p className="usage-summary">
+                    {actualCost !== null
+                      ? `${progress.status === "translating" ? "Cost so far" : "Actual cost"}: ${formatMoney(actualCost)}`
+                      : selectedEngine === "openai"
+                        ? "Add your current input and output token prices above if you want this turned into a money total."
+                        : "Add your current character price above if you want this turned into a money total."}
+                  </p>
+                  {selectedEngine === "openai" &&
+                  selectedUsageTotals.inputTokens === 0 &&
+                  selectedUsageTotals.outputTokens === 0 ? (
+                    <p className="usage-note">
+                      OpenAI finished some steps, but no exact token counts came back, so only the estimate is available.
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="empty-copy">
+                  Start a translation and this area will show what the service actually used.
+                </p>
+              )}
             </div>
             <div className="issue-list">
               {issues.length ? (

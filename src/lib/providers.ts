@@ -1,5 +1,10 @@
 import { ENGINE_CATALOG } from "./engineCatalog";
-import type { EngineId, ProviderRequest } from "../types";
+import type {
+  EngineId,
+  ProviderBatchResult,
+  ProviderBatchUsage,
+  ProviderRequest,
+} from "../types";
 
 function decodeHtmlEntities(value: string) {
   const doc = new DOMParser().parseFromString(value, "text/html");
@@ -20,6 +25,28 @@ function extractErrorMessage(payload: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function countCodePoints(value: string) {
+  return Array.from(value).length;
+}
+
+function countSourceCharacters(texts: string[]) {
+  return texts.reduce((total, text) => total + countCodePoints(text), 0);
+}
+
+function createBatchUsage(
+  sourceCharacters: number,
+  overrides: Partial<Omit<ProviderBatchUsage, "sourceCharacters">> = {},
+): ProviderBatchUsage {
+  return {
+    sourceCharacters,
+    billedCharacters: null,
+    inputTokens: null,
+    outputTokens: null,
+    totalTokens: null,
+    ...overrides,
+  };
 }
 
 function extractOpenAiText(payload: unknown) {
@@ -69,16 +96,51 @@ function extractOpenAiText(payload: unknown) {
   return longest;
 }
 
+function extractOpenAiUsage(payload: unknown, sourceCharacters: number) {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("usage" in payload) ||
+    !payload.usage ||
+    typeof payload.usage !== "object"
+  ) {
+    return createBatchUsage(sourceCharacters);
+  }
+
+  const usage = payload.usage;
+  const inputTokens =
+    "input_tokens" in usage && typeof usage.input_tokens === "number"
+      ? usage.input_tokens
+      : null;
+  const outputTokens =
+    "output_tokens" in usage && typeof usage.output_tokens === "number"
+      ? usage.output_tokens
+      : null;
+  const totalTokens =
+    "total_tokens" in usage && typeof usage.total_tokens === "number"
+      ? usage.total_tokens
+      : inputTokens !== null || outputTokens !== null
+        ? (inputTokens ?? 0) + (outputTokens ?? 0)
+        : null;
+
+  return createBatchUsage(sourceCharacters, {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+  });
+}
+
 async function translateWithOpenAi({
   texts,
   sourceLanguage,
   targetLanguage,
   config,
   signal,
-}: ProviderRequest): Promise<string[]> {
+}: ProviderRequest): Promise<ProviderBatchResult> {
   const apiKey = config.apiKey?.trim();
   const model = config.model?.trim();
   const baseUrl = config.baseUrl?.trim() || "https://api.openai.com/v1";
+  const sourceCharacters = countSourceCharacters(texts);
 
   if (!apiKey || !model) {
     throw new Error("OpenAI requires both an API key and a model.");
@@ -188,7 +250,10 @@ async function translateWithOpenAi({
     );
   }
 
-  return parsed.translations;
+  return {
+    translations: parsed.translations,
+    usage: extractOpenAiUsage(payload, sourceCharacters),
+  };
 }
 
 async function translateWithGoogle({
@@ -197,8 +262,9 @@ async function translateWithGoogle({
   targetLanguage,
   config,
   signal,
-}: ProviderRequest): Promise<string[]> {
+}: ProviderRequest): Promise<ProviderBatchResult> {
   const apiKey = config.apiKey?.trim();
+  const sourceCharacters = countSourceCharacters(texts);
 
   if (!apiKey) {
     throw new Error("Google Translate requires an API key.");
@@ -265,7 +331,12 @@ async function translateWithGoogle({
     );
   }
 
-  return translations;
+  return {
+    translations,
+    usage: createBatchUsage(sourceCharacters, {
+      billedCharacters: sourceCharacters,
+    }),
+  };
 }
 
 async function translateWithDeepLBridge({
@@ -274,8 +345,9 @@ async function translateWithDeepLBridge({
   targetLanguage,
   config,
   signal,
-}: ProviderRequest): Promise<string[]> {
+}: ProviderRequest): Promise<ProviderBatchResult> {
   const proxyUrl = config.proxyUrl?.trim() || "/api/deepl";
+  const sourceCharacters = countSourceCharacters(texts);
 
   let response: Response;
 
@@ -338,7 +410,21 @@ async function translateWithDeepLBridge({
     );
   }
 
-  return translations;
+  const billedCharacters =
+    "usage" in payload &&
+    payload.usage &&
+    typeof payload.usage === "object" &&
+    "billedCharacters" in payload.usage &&
+    typeof payload.usage.billedCharacters === "number"
+      ? payload.usage.billedCharacters
+      : sourceCharacters;
+
+  return {
+    translations,
+    usage: createBatchUsage(sourceCharacters, {
+      billedCharacters,
+    }),
+  };
 }
 
 export function getEngineSupportMessage(engine: EngineId) {
@@ -352,7 +438,7 @@ export function isEngineRunnable(engine: EngineId) {
 export async function translateBatch(
   engine: EngineId,
   request: ProviderRequest,
-): Promise<string[]> {
+): Promise<ProviderBatchResult> {
   switch (engine) {
     case "openai":
       return translateWithOpenAi(request);

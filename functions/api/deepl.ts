@@ -10,6 +10,10 @@ interface Context {
 
 const DEFAULT_SERVER_URL = "https://api-free.deepl.com";
 
+function countCodePoints(value: string) {
+  return Array.from(value).length;
+}
+
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -88,6 +92,10 @@ export const onRequestPost = async ({ request, env }: Context) => {
       ? body.serverUrl
       : undefined) || env.DEEPL_SERVER_URL,
   );
+  const sourceCharacters = texts.reduce(
+    (total, text) => total + countCodePoints(text),
+    0,
+  );
 
   if (!texts.length) {
     return json({ error: "At least one text fragment is required." }, 400);
@@ -160,10 +168,22 @@ export const onRequestPost = async ({ request, env }: Context) => {
   }
 
   const translations = [];
+  let billedCharacters = 0;
+  let hasBilledCharacters = false;
 
   for (const entry of deeplPayload.translations) {
     if (!entry || typeof entry !== "object" || !("text" in entry) || typeof entry.text !== "string") {
       return json({ error: "DeepL returned an invalid translation entry." }, 502);
+    }
+
+    const entryBilledCharacters =
+      "billed_characters" in entry && typeof entry.billed_characters === "number"
+        ? entry.billed_characters
+        : null;
+
+    if (entryBilledCharacters !== null) {
+      billedCharacters += entryBilledCharacters;
+      hasBilledCharacters = true;
     }
 
     translations.push({
@@ -174,11 +194,15 @@ export const onRequestPost = async ({ request, env }: Context) => {
           ? entry.detected_source_language
           : null,
       billedCharacters:
-        "billed_characters" in entry && typeof entry.billed_characters === "number"
-          ? entry.billed_characters
-          : null,
+        entryBilledCharacters,
     });
   }
 
-  return json({ translations });
+  return json({
+    translations,
+    usage: {
+      sourceCharacters,
+      billedCharacters: hasBilledCharacters ? billedCharacters : sourceCharacters,
+    },
+  });
 };
