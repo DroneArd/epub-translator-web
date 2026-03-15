@@ -319,15 +319,32 @@ button {
 }
 
 .engine-card {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
   border: 1px solid var(--line);
   border-radius: 20px;
   background: rgba(255, 252, 246, 0.82);
   padding: 0.95rem;
+  min-height: 8.6rem;
   text-align: left;
   transition:
     transform 180ms ease,
     border-color 180ms ease,
     background 180ms ease;
+}
+
+.engine-card__row {
+  align-items: center;
+}
+
+.engine-card__row strong {
+  line-height: 1.2;
+}
+
+.engine-status {
+  align-self: center;
+  white-space: nowrap;
 }
 
 .engine-card:hover,

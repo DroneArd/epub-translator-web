@@ -44,20 +44,30 @@ const PREVIEW_STYLE = `
   }
 
   .parallel-layout {
-    display: grid;
-    width: 95%;
-    margin: 0 auto;
-    gap: 1.25rem;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    display: grid !important;
+    width: 95% !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+    gap: 1.25rem !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    justify-items: stretch !important;
   }
 
   .parallel-panel {
-    min-width: 0;
-    background: rgba(255, 252, 244, 0.92);
-    border: 1px solid rgba(91, 76, 42, 0.18);
-    border-radius: 18px;
-    padding: 1.25rem;
-    box-shadow: 0 18px 40px rgba(73, 56, 26, 0.08);
+    display: block !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    justify-self: stretch !important;
+    align-self: stretch !important;
+    background: rgba(255, 252, 244, 0.92) !important;
+    border: 1px solid rgba(91, 76, 42, 0.18) !important;
+    border-radius: 18px !important;
+    padding: 1.25rem !important;
+    box-shadow: 0 18px 40px rgba(73, 56, 26, 0.08) !important;
   }
 
   .parallel-panel h1:first-child,
@@ -70,22 +80,26 @@ const PREVIEW_STYLE = `
 
 const EXPORT_PARALLEL_STYLE = `
   .parallel-layout {
-    display: table;
-    width: 100%;
-    table-layout: fixed;
-    border-spacing: 0;
+    display: table !important;
+    width: 95% !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+    table-layout: fixed !important;
+    border-spacing: 0 !important;
   }
 
   .parallel-panel {
-    display: table-cell;
-    width: 50%;
-    vertical-align: top;
-    padding-right: 0.8em;
+    display: table-cell !important;
+    width: 50% !important;
+    max-width: none !important;
+    vertical-align: top !important;
+    padding-right: 0.8em !important;
+    box-sizing: border-box !important;
   }
 
   .parallel-panel--translated {
-    padding-right: 0;
-    padding-left: 0.8em;
+    padding-right: 0 !important;
+    padding-left: 0.8em !important;
   }
 `;
 
