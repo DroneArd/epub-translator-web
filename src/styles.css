@@ -134,7 +134,6 @@ button {
 .workspace {
   display: grid;
   gap: 1.5rem;
-  grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
   max-width: 1600px;
   margin: 0 auto;
 }
@@ -143,6 +142,22 @@ button {
   display: grid;
   gap: 1rem;
   align-content: start;
+}
+
+.control-stack--wide {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.control-card--full {
+  grid-column: 1 / -1;
+}
+
+.control-card--service {
+  grid-column: span 7;
+}
+
+.control-card--translation {
+  grid-column: span 5;
 }
 
 .card {
@@ -287,6 +302,15 @@ button {
   display: grid;
   gap: 0.75rem;
   margin-top: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.engine-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  margin-top: 1rem;
+  align-items: start;
 }
 
 .engine-card {
@@ -527,6 +551,13 @@ button {
   font-size: 1.2rem;
 }
 
+.guide-block--inline {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 252, 246, 0.76);
+  padding: 1rem;
+}
+
 .guide-notes {
   display: grid;
   gap: 0.55rem;
@@ -653,11 +684,20 @@ button {
 }
 
 @media (max-width: 1180px) {
-  .workspace,
   .hero {
     grid-template-columns: 1fr;
   }
 
+  .control-stack--wide {
+    grid-template-columns: 1fr;
+  }
+
+  .control-card--service,
+  .control-card--translation {
+    grid-column: 1 / -1;
+  }
+
+  .engine-layout,
   .preview-layout {
     grid-template-columns: 1fr;
   }

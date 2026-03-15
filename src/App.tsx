@@ -1020,8 +1020,8 @@ function App() {
         </header>
 
       <main className="workspace">
-        <section className="control-stack">
-          <article className="card control-card">
+        <section className="control-stack control-stack--wide">
+          <article className="card control-card control-card--full">
             <div className="card-head">
               <div>
                 <p className="card-label">1. EPUB</p>
@@ -1079,11 +1079,11 @@ function App() {
             </div>
           </article>
 
-          <article className="card control-card">
+          <article className="card control-card control-card--service">
             <div className="card-head">
               <div>
-                <p className="card-label">2. Engine</p>
-                <h2>Choose a translation service</h2>
+                <p className="card-label">2. Service</p>
+                <h2>Choose a translation service and enter your key</h2>
               </div>
             </div>
             <div className="engine-grid">
@@ -1109,55 +1109,71 @@ function App() {
                 );
               })}
             </div>
-            <div className="engine-detail">
-              <p>{ENGINE_CATALOG[selectedEngine].description}</p>
-              <div className="field-grid">
-                {ENGINE_CATALOG[selectedEngine].fields.map((field) => (
-                  <label key={field.key} className="field">
-                    <span>{field.label}</span>
+            <div className="engine-layout">
+              <div className="engine-detail">
+                <p>{ENGINE_CATALOG[selectedEngine].description}</p>
+                <div className="field-grid">
+                  {ENGINE_CATALOG[selectedEngine].fields.map((field) => (
+                    <label key={field.key} className="field">
+                      <span>{field.label}</span>
+                      <input
+                        type={field.type}
+                        placeholder={field.placeholder}
+                        required={field.required}
+                        value={providerConfig[selectedEngine][field.key] ?? ""}
+                        onChange={(event) =>
+                          updateProviderConfig(
+                            selectedEngine,
+                            field.key,
+                            event.target.value,
+                          )
+                        }
+                      />
+                      {field.help ? <small>{field.help}</small> : null}
+                    </label>
+                  ))}
+                </div>
+                <div className="toggle-stack">
+                  <label className="toggle-row">
                     <input
-                      type={field.type}
-                      placeholder={field.placeholder}
-                      required={field.required}
-                      value={providerConfig[selectedEngine][field.key] ?? ""}
+                      type="checkbox"
+                      checked={persistencePreferences.rememberApiKeys}
                       onChange={(event) =>
-                        updateProviderConfig(
-                          selectedEngine,
-                          field.key,
-                          event.target.value,
-                        )
+                        updatePersistencePreference("rememberApiKeys", event.target.checked)
                       }
+                      disabled={!persistencePreferences.rememberSession}
                     />
-                    {field.help ? <small>{field.help}</small> : null}
+                    <span>
+                      <strong>Remember my API key on this device</strong>
+                      <small>
+                        Keep this turned off if you are on a shared computer. The key is only saved inside this browser.
+                      </small>
+                    </span>
                   </label>
-                ))}
+                </div>
               </div>
-              <div className="toggle-stack">
-                <label className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={persistencePreferences.rememberApiKeys}
-                    onChange={(event) =>
-                      updatePersistencePreference("rememberApiKeys", event.target.checked)
-                    }
-                    disabled={!persistencePreferences.rememberSession}
-                  />
-                  <span>
-                    <strong>Remember my API key on this device</strong>
-                    <small>
-                      Keep this turned off if you are on a shared computer. The key is only saved inside this browser.
-                    </small>
-                  </span>
-                </label>
+              <div className="guide-block guide-block--inline">
+                <p className="card-label">Setup Help</p>
+                <h3>How to get your {ENGINE_CATALOG[selectedEngine].label} key</h3>
+                <ol className="guide-steps">
+                  {ENGINE_CATALOG[selectedEngine].setupSteps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+                <div className="guide-notes">
+                  {ENGINE_CATALOG[selectedEngine].notes.map((note) => (
+                    <p key={note}>{note}</p>
+                  ))}
+                </div>
               </div>
             </div>
           </article>
 
-          <article className="card control-card">
+          <article className="card control-card control-card--translation">
             <div className="card-head">
               <div>
-                <p className="card-label">3. Translation</p>
-                <h2>Choose language and download style</h2>
+                <p className="card-label">3. Options</p>
+                <h2>Choose language, layout, and speed</h2>
               </div>
             </div>
             <div className="field-grid field-grid--compact">
@@ -1382,11 +1398,11 @@ function App() {
             </div>
           </article>
 
-          <article className="card control-card">
+          <article className="card control-card control-card--full">
             <div className="card-head">
               <div>
                 <p className="card-label">4. Status</p>
-                <h2>Progress and messages</h2>
+                <h2>Start the translation and follow progress</h2>
               </div>
             </div>
             <div className="progress-panel">
@@ -1491,28 +1507,6 @@ function App() {
                   Everything looks good so far. If anything goes wrong, the details will appear here.
                 </p>
               )}
-            </div>
-          </article>
-
-          <article className="card control-card">
-            <div className="card-head">
-              <div>
-                <p className="card-label">5. Setup guide</p>
-                <h2>How to get your API key</h2>
-              </div>
-            </div>
-            <div className="guide-block">
-              <h3>{ENGINE_CATALOG[selectedEngine].label}</h3>
-              <ol className="guide-steps">
-                {ENGINE_CATALOG[selectedEngine].setupSteps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-              <div className="guide-notes">
-                {ENGINE_CATALOG[selectedEngine].notes.map((note) => (
-                  <p key={note}>{note}</p>
-                ))}
-              </div>
             </div>
           </article>
         </section>
