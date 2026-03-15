@@ -77,12 +77,12 @@ export const ENGINE_CATALOG: Record<EngineId, EngineDefinition> = {
   deepl: {
     id: "deepl",
     label: "DeepL",
-    tagline: "Official API blocks browser-origin calls",
+    tagline: "DeepL through a same-origin Cloudflare proxy route",
     description:
-      "DeepL's official docs state that browser requests are blocked by CORS. That means a truly static host cannot call DeepL directly without adding a proxy or backend, which this repo intentionally avoids.",
-    status: "blocked",
-    browserOnlySupport: "blocked",
-    statusLabel: "Blocked in browser-only mode",
+      "DeepL still cannot be called directly from a normal webpage because of CORS. This repo solves that with a Cloudflare Pages Function at /api/deepl, so the user only visits the site and enters a key while the proxy hop happens on Cloudflare's edge.",
+    status: "caution",
+    browserOnlySupport: "warn",
+    statusLabel: "Works through Cloudflare proxy",
     fields: [
       {
         key: "apiKey",
@@ -90,24 +90,25 @@ export const ENGINE_CATALOG: Record<EngineId, EngineDefinition> = {
         type: "password",
         placeholder: "dpl-auth-key",
         required: true,
-        help: "Shown for completeness, but the official browser restriction still applies.",
+        help: "This is forwarded to the Cloudflare Pages Function and then to DeepL.",
       },
       {
-        key: "endpoint",
-        label: "API endpoint",
+        key: "serverUrl",
+        label: "DeepL server URL",
         type: "url",
-        placeholder: "https://api-free.deepl.com/v2/translate",
-        help: "Use the Free or Pro endpoint that matches your account.",
+        placeholder: "https://api-free.deepl.com",
+        help: "Optional. Leave blank for Free, or use https://api.deepl.com for Pro.",
       },
     ],
     setupSteps: [
       "Create a DeepL API plan and copy your authentication key.",
-      "Choose the matching Free or Pro endpoint.",
-      "Use a backend proxy if you truly need DeepL, because the browser-only build cannot reach DeepL directly.",
+      "Deploy this repo to Cloudflare Pages so the /api/deepl function exists on the same domain as the app.",
+      "Paste your DeepL API key into the form when you use the site.",
+      "Leave the server URL blank for DeepL Free, or set it to https://api.deepl.com if you use DeepL Pro.",
     ],
     notes: [
-      "The static build keeps the option visible so the limitation is explicit instead of hidden.",
-      "If you need DeepL, the clean fix is a tiny proxy service that only forwards translation calls.",
+      "DeepL's docs explicitly recommend a proxy for browser-based apps because direct browser calls are blocked by CORS.",
+      "With Cloudflare Pages, the EPUB still stays in the browser, but the API key and text batches pass through Cloudflare before reaching DeepL.",
     ],
   },
 };
@@ -125,6 +126,6 @@ export const DEFAULT_PROVIDER_CONFIG = {
   },
   deepl: {
     apiKey: "",
-    endpoint: "https://api-free.deepl.com/v2/translate",
+    serverUrl: "",
   },
 };

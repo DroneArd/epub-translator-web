@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.app.json && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cf:dev": "npm run build && npx wrangler@latest pages dev",
+    "cf:deploy": "npm run build && npx wrangler@latest pages deploy"
   },
   "dependencies": {
     "jszip": "^3.10.1",

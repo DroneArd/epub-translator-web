@@ -266,7 +266,7 @@ function App() {
           false,
         ),
       ]);
-      setStatusMessage("This provider cannot run in a browser-only deployment.");
+      setStatusMessage("This provider cannot run in the current deployment mode.");
       return;
     }
 
@@ -494,12 +494,13 @@ function App() {
       <div className="page-backdrop" />
       <header className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">Browser-only EPUB Translation</p>
-          <h1>Translate EPUBs without uploading the book to your own server.</h1>
+          <p className="eyebrow">Static EPUB Translation</p>
+          <h1>Translate EPUBs without uploading the book to your hosted server.</h1>
           <p className="hero-summary">
-            This repo rebuilds the original Python script as a static TypeScript site:
-            EPUB parsing, preview, batching, and export all happen locally in the tab.
-            Only extracted text batches are sent to the translation engine you choose.
+            This repo rebuilds the original Python script as a static TypeScript site.
+            EPUB parsing, preview, batching, and export happen locally in the tab.
+            Google and OpenAI can be called directly, and DeepL is routed through a same-origin
+            Cloudflare Pages Function so the user only needs to visit the website and enter a key.
           </p>
           <div className="hero-badges">
             <span>Local EPUB parsing</span>
@@ -511,8 +512,9 @@ function App() {
           <p className="card-label">Privacy boundary</p>
           <ul className="privacy-list">
             <li>The uploaded `.epub` stays in browser memory.</li>
-            <li>Your static host never receives the file or the API key.</li>
-            <li>Only the selected engine receives the text fragments you translate.</li>
+            <li>Your static host never receives the full EPUB archive.</li>
+            <li>For DeepL, the API key and text batches pass through the Cloudflare proxy route before reaching DeepL.</li>
+            <li>For Google and OpenAI, the browser sends text batches directly to the selected engine.</li>
           </ul>
         </div>
       </header>

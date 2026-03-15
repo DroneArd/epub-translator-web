@@ -268,13 +268,77 @@ async function translateWithGoogle({
   return translations;
 }
 
-async function translateWithDeepL(): Promise<string[]> {
-  throw new Error(
-    [
-      "DeepL is intentionally unavailable in this browser-only build.",
-      "Its official API blocks browser-origin requests with CORS, so a proxy or backend would be required.",
-    ].join(" "),
-  );
+async function translateWithDeepLBridge({
+  texts,
+  sourceLanguage,
+  targetLanguage,
+  config,
+  signal,
+}: ProviderRequest): Promise<string[]> {
+  const proxyUrl = config.proxyUrl?.trim() || "/api/deepl";
+
+  let response: Response;
+
+  try {
+    response = await fetch(proxyUrl, {
+      method: "POST",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        texts,
+        sourceLanguage: sourceLanguage || null,
+        targetLanguage,
+        apiKey: config.apiKey?.trim() || undefined,
+        serverUrl: config.serverUrl?.trim() || undefined,
+      }),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+
+    throw new Error(
+      `Could not reach the DeepL proxy route at ${proxyUrl}. Deploy the site on Cloudflare Pages so /api/deepl is available, or point proxyUrl at a compatible endpoint.`,
+    );
+  }
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+
+  if (!response.ok) {
+    throw new Error(
+      extractErrorMessage(
+        payload,
+        `DeepL proxy request failed with HTTP ${response.status}.`,
+      ),
+    );
+  }
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("translations" in payload) ||
+    !Array.isArray(payload.translations)
+  ) {
+    throw new Error("DeepL proxy returned an unexpected response shape.");
+  }
+
+  const translations = payload.translations.map((entry) => {
+    if (!entry || typeof entry !== "object" || !("text" in entry) || typeof entry.text !== "string") {
+      throw new Error("DeepL proxy returned an invalid translation entry.");
+    }
+
+    return entry.text;
+  });
+
+  if (translations.length !== texts.length) {
+    throw new Error(
+      `DeepL proxy returned ${translations.length} translations for ${texts.length} inputs.`,
+    );
+  }
+
+  return translations;
 }
 
 export function getEngineSupportMessage(engine: EngineId) {
@@ -295,7 +359,7 @@ export async function translateBatch(
     case "google":
       return translateWithGoogle(request);
     case "deepl":
-      return translateWithDeepL();
+      return translateWithDeepLBridge(request);
     default:
       throw new Error(`Unsupported engine: ${String(engine)}`);
   }
