@@ -354,9 +354,20 @@ button {
   transform: translateY(-1px);
 }
 
+.engine-card:hover {
+  border-color: rgba(20, 108, 83, 0.34);
+  background: rgba(245, 252, 248, 0.95);
+  box-shadow: 0 14px 30px rgba(61, 44, 20, 0.08);
+}
+
 .engine-card--selected {
   border-color: rgba(20, 108, 83, 0.58);
   background: rgba(225, 246, 239, 0.9);
+}
+
+.engine-card--selected:hover {
+  border-color: rgba(20, 108, 83, 0.68);
+  background: rgba(220, 244, 236, 0.96);
 }
 
 .engine-card p,
