@@ -1374,7 +1374,11 @@ function App() {
             <div className="usage-panel">
               <div className="usage-head">
                 <strong>Estimated usage before you start</strong>
-                <span>{selectedEngine === "openai" ? "Rough guide" : "Close guide"}</span>
+                <span>
+                  {selectedEngine === "openai"
+                    ? "Approximate estimate"
+                    : "Usually accurate estimate"}
+                </span>
               </div>
               {book ? (
                 <>
