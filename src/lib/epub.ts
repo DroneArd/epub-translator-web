@@ -369,11 +369,11 @@ function transformDocument(
   const wrapper = createElement(doc, "div");
   wrapper.setAttribute("class", "parallel-layout");
 
-  const originalColumn = createElement(doc, "section");
+  const originalColumn = createElement(doc, "div");
   originalColumn.setAttribute("class", "parallel-panel parallel-panel--original");
   moveChildren(originalBody, originalColumn);
 
-  const translatedColumn = createElement(doc, "section");
+  const translatedColumn = createElement(doc, "div");
   translatedColumn.setAttribute(
     "class",
     "parallel-panel parallel-panel--translated",
@@ -575,8 +575,11 @@ export async function buildDownloadBlob(
   mode: OutputMode,
 ) {
   const outputZip = new JSZip();
+  const orderedPaths = book.fileOrder.includes("mimetype")
+    ? ["mimetype", ...book.fileOrder.filter((path) => path !== "mimetype")]
+    : [...book.fileOrder];
 
-  for (const path of book.fileOrder) {
+  for (const path of orderedPaths) {
     const sourceFile = book.zip.file(path);
     if (!sourceFile) {
       continue;
@@ -585,7 +588,8 @@ export async function buildDownloadBlob(
     const translatedDocument = book.documents[path];
     const options = {
       binary: !translatedDocument,
-      compression: path === "mimetype" ? "STORE" : "DEFLATE",
+      compression: "STORE",
+      createFolders: false,
       date: sourceFile.date,
       dir: sourceFile.dir,
       comment: sourceFile.comment,
@@ -615,7 +619,7 @@ export async function buildDownloadBlob(
   return outputZip.generateAsync({
     type: "blob",
     mimeType: "application/epub+zip",
-    compression: "DEFLATE",
+    compression: "STORE",
   });
 }
 
